@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Purchase {{ purchase.id }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+    ul { margin: 0; padding-left: 20px; }
+    details { margin-top: 14px; }
+    pre { white-space: pre-wrap; background: #f8f8f8; border: 1px solid #ddd; padding: 10px; }
+    .pill { display: inline-block; padding: 3px 8px; background: #ececec; border-radius: 8px; }
+    .used { background: #def4de; }
+    .unused { background: #f5f5f5; }
+    .warning { color: #b55a00; }
+    .links { display: flex; gap: 10px; margin: 8px 0; }
+    .inline-form { display: inline-block; margin-right: 4px; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Back to list</a> | <a href="/jobs">Jobs</a> | <a href="/diagnostics">Diagnostics</a> | <a href="/watchlist">Watchlist</a></p>
+  <h1>{{ purchase.title }}</h1>
+  <form method="post" action="/purchases/{{ purchase.id }}/recalculate">
+    <button type="submit">Пересчитать закупку</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="watch" />
+    <button type="submit">Add to watchlist</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="preparing" />
+    <button type="submit">Mark preparing</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="submitted" />
+    <button type="submit">Mark submitted</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="won" />
+    <button type="submit">Mark won</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="lost" />
+    <button type="submit">Mark lost</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="ignored" />
+    <button type="submit">Ignore</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch">
+    <input type="hidden" name="status" value="rejected" />
+    <button type="submit">Reject</button>
+  </form>
+  <form method="post" action="/purchases/{{ purchase.id }}/watch/remove">
+    <button type="submit">Remove from watchlist</button>
+  </form>
+  <p><strong>Source:</strong> {{ purchase.source }}</p>
+  <p><strong>External ID:</strong> {{ purchase.external_id }}</p>
+  <p><strong>Status:</strong> {{ purchase.status if purchase.status else '-' }}</p>
+  <p><strong>Data quality:</strong> <span class="pill">{{ purchase.data_quality if purchase.data_quality else '-' }}</span></p>
+  <p><strong>Region:</strong> {{ purchase.region if purchase.region else '-' }}</p>
+  <p><strong>Customer:</strong> {{ purchase.customer_name if purchase.customer_name else '-' }}</p>
+  <p><strong>Max total price:</strong> {{ purchase.max_total_price }}</p>
+  <p><strong>Deadline:</strong> {{ purchase.submission_deadline if purchase.submission_deadline else '-' }}</p>
+  <p><strong>Parsed at:</strong> {{ purchase.parsed_at if purchase.parsed_at else '-' }}</p>
+  <p><strong>Origin:</strong> {% if is_fixture %}<span class="pill">fixture</span>{% else %}<span class="pill">real source</span>{% endif %}</p>
+
+  {% if purchase.url %}
+  <p><strong>Source link:</strong> <a href="{{ purchase.url }}" target="_blank" rel="noopener noreferrer">{{ purchase.url }}</a></p>
+  {% endif %}
+
+  {% if purchase.risk_flags %}
+  <h2>Risk Flags</h2>
+  <ul>
+    {% for flag in purchase.risk_flags %}
+    <li>{{ flag }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if purchase_calc %}
+  <h2>Calculation Summary</h2>
+  <p><strong>Estimated cost:</strong> {{ purchase_calc.estimated_cost }}</p>
+  <p><strong>Estimated profit:</strong> {{ purchase_calc.estimated_profit }}</p>
+  <p><strong>Margin:</strong> {{ purchase_calc.margin_percent }}%</p>
+  <p><strong>Margin before tax:</strong> {{ purchase_calc.margin_before_tax_percent }}%</p>
+  <p><strong>Margin after tax:</strong> {{ purchase_calc.margin_after_tax_percent }}%</p>
+  <p><strong>Tax:</strong> {{ purchase_calc.tax_amount }}</p>
+  <p><strong>VAT:</strong> {{ purchase_calc.vat_amount }}</p>
+  <p><strong>Profit after tax:</strong> {{ purchase_calc.profit_after_tax }}</p>
+  <p><strong>Risk level:</strong> {{ purchase_calc.risk_level if purchase_calc.risk_level else '-' }}</p>
+  <p><strong>Cash required:</strong> {{ purchase_calc.cash_required }}</p>
+  <p><strong>Status:</strong> {{ purchase_calc.recommendation_status }}</p>
+  <p><strong>Attractiveness score:</strong> {{ purchase_calc.attractiveness_score }}</p>
+  {% endif %}
+
+  {% if decision_score %}
+  <h2>Summary Decision</h2>
+  <p><strong>Decision:</strong> {{ decision_score.decision }}</p>
+  <p><strong>Decision status:</strong> {{ decision_score.decision_status if decision_score.decision_status else '-' }}</p>
+  <p><strong>Risk level:</strong> {{ decision_score.risk_level }}</p>
+  <p><strong>Score total:</strong> {{ decision_score.score_total }}</p>
+  <p><strong>Next action:</strong> {{ decision_score.next_action if decision_score.next_action else '-' }}</p>
+  <p><strong>Decision reason:</strong> {{ decision_score.decision_reason if decision_score.decision_reason else '-' }}</p>
+  {% if decision_score.explanation_json %}
+  <details>
+    <summary>Decision explanation</summary>
+    <pre>{{ decision_score.explanation_json }}</pre>
+  </details>
+  {% endif %}
+  {% endif %}
+
+  {% if data_quality_warnings %}
+  <h2>Data Quality Warnings</h2>
+  <ul>
+    {% for item in data_quality_warnings %}
+    <li>{{ item }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h2>Объяснение решения</h2>
+  <p><strong>Summary:</strong> {{ explanation.summary }}</p>
+  <p><strong>Recommendation reason:</strong> {{ explanation.recommendation_reason }}</p>
+  {% if explanation.positive_factors %}
+  <p><strong>Positive:</strong></p>
+  <ul>{% for x in explanation.positive_factors %}<li>{{ x }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if explanation.negative_factors %}
+  <p><strong>Negative:</strong></p>
+  <ul>{% for x in explanation.negative_factors %}<li>{{ x }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if explanation.risk_factors %}
+  <p><strong>Risk factors:</strong></p>
+  <ul>{% for x in explanation.risk_factors %}<li>{{ x }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if explanation.next_actions %}
+  <p><strong>Next actions:</strong></p>
+  <ul>{% for x in explanation.next_actions %}<li>{{ x }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  <h2>Items, Calculations, and Market Offers</h2>
+  <div class="links">
+    <a href="/purchases/{{ purchase.id }}?offers_view=all">Показать все предложения</a>
+    <a href="/purchases/{{ purchase.id }}?offers_view=used">Показать только использованные</a>
+    <a href="/purchases/{{ purchase.id }}?offers_view=irrelevant">Показать нерелевантные</a>
+  </div>
+
+  {% for item in purchase.items %}
+    {% set calc = item_calc_map.get(item.id) %}
+    <h3>{{ item.item_name }}</h3>
+    <p><strong>Quantity:</strong> {{ item.quantity }} {{ item.unit if item.unit else '' }}</p>
+    <p><strong>Item status:</strong> {{ calc.status if calc else 'needs_manual_price_search' }}</p>
+    {% if item.attributes %}
+      <p><strong>Category:</strong> {{ item.attributes.category if item.attributes.category else '-' }}</p>
+      <p><strong>Brand/Model/Article:</strong> {{ item.attributes.brand if item.attributes.brand else '-' }} / {{ item.attributes.model if item.attributes.model else '-' }} / {{ item.attributes.article if item.attributes.article else '-' }}</p>
+      <p><strong>Original required:</strong> {{ 'yes' if item.attributes.original_required else 'no' }}</p>
+      <p><strong>Compatible allowed:</strong> {{ 'yes' if item.attributes.compatible_allowed else 'no' }}</p>
+    {% endif %}
+    <form class="inline-form" method="post" action="/items/{{ item.id }}/refresh-attributes"><input type="hidden" name="purchase_id" value="{{ purchase.id }}"/><button type="submit">Обновить атрибуты</button></form>
+    <form class="inline-form" method="post" action="/items/{{ item.id }}/rematch-offers"><input type="hidden" name="purchase_id" value="{{ purchase.id }}"/><button type="submit">Пересопоставить предложения</button></form>
+    {% if calc and calc.estimated_item_cost %}
+      <p><strong>Calculated total cost:</strong> {{ calc.estimated_item_cost }}</p>
+      {% if calc.calculation_details_json %}
+        <p><strong>Overbuy cost:</strong> {{ calc.calculation_details_json.get('overbuy_cost', '-') }}</p>
+      {% endif %}
+    {% endif %}
+
+    <h4>Add manual offer</h4>
+    <form method="post" action="/items/{{ item.id }}/manual-offer">
+      <input type="hidden" name="purchase_id" value="{{ purchase.id }}" />
+      <input name="offer_title" placeholder="Название" required />
+      <input name="seller_name" placeholder="Поставщик" />
+      <input name="offer_url" placeholder="URL" />
+      <input name="region" placeholder="Регион" />
+      <input name="unit_price" placeholder="Цена" required />
+      <input name="available_quantity" placeholder="Кол-во" value="1" />
+      <input name="delivery_price" placeholder="Доставка" />
+      <button type="submit">Add manual offer</button>
+    </form>
+
+    {% set offers = offers_by_item.get(item.id, []) %}
+    {% if not offers %}
+      <p class="warning">Цена не найдена. Статус: needs_manual_price_search.</p>
+      <p><strong>Рекомендуемый запрос:</strong> {{ search_queries[item.id] }}</p>
+    {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>Использовано</th>
+            <th>Эфф. релевантность</th>
+            <th>Предложение</th>
+            <th>Поставщик</th>
+            <th>Регион</th>
+            <th>Цена</th>
+            <th>Доступно</th>
+            <th>Доставка</th>
+            <th>Эффективная цена</th>
+            <th>Релевантность</th>
+            <th>Match score</th>
+            <th>Match reasons</th>
+            <th>Matched fields</th>
+            <th>Mismatched fields</th>
+            <th>Hard reject</th>
+            <th>Supplier status</th>
+            <th>Risk flags</th>
+            <th>Ссылка</th>
+            <th>Взято</th>
+            <th>Сумма</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in offers %}
+          {% set offer = row.offer %}
+          <tr class="{% if row.used %}used{% else %}unused{% endif %}">
+            <td>{{ 'yes' if row.used else 'no' }}</td>
+            <td>{{ 'yes' if row.effective_relevant else 'no' }}</td>
+            <td>{{ offer.offer_title if offer.offer_title else offer.item_name }}</td>
+            <td>{{ offer.seller_name if offer.seller_name else offer.supplier_name }}</td>
+            <td>{{ offer.region if offer.region else '-' }}</td>
+            <td>{{ offer.unit_price }}</td>
+            <td>{{ offer.available_quantity }}</td>
+            <td>{{ offer.delivery_price if offer.delivery_price is not none else '-' }}</td>
+            <td>{{ offer.effective_unit_price if offer.effective_unit_price is not none else '-' }}</td>
+            <td>{{ offer.relevance_score if offer.relevance_score is not none else '-' }}</td>
+            <td>{{ offer.match_score if offer.match_score is not none else '-' }}</td>
+            <td>{{ ', '.join(offer.match_reasons_json) if offer.match_reasons_json else '-' }}</td>
+            <td>{{ ', '.join(offer.matched_fields_json) if offer.matched_fields_json else '-' }}</td>
+            <td>{{ ', '.join(offer.mismatched_fields_json) if offer.mismatched_fields_json else '-' }}</td>
+            <td>{{ offer.hard_reject_reason if offer.hard_reject_reason else '-' }}</td>
+            <td>{{ offer.supplier_status if offer.supplier_status else '-' }}</td>
+            <td>{{ ', '.join(offer.risk_flags) if offer.risk_flags else '-' }}</td>
+            <td>{% if offer.offer_url %}<a href="{{ offer.offer_url }}" target="_blank" rel="noopener noreferrer">open</a>{% else %}-{% endif %}</td>
+            <td>{{ row.taken_quantity if row.taken_quantity is not none else '-' }}</td>
+            <td>{{ row.used_total if row.used_total is not none else '-' }}</td>
+            <td>
+              <form class="inline-form" method="post" action="/offers/{{ offer.id }}/mark-relevant"><input type="hidden" name="purchase_id" value="{{ purchase.id }}"/><button type="submit">Mark relevant</button></form>
+              <form class="inline-form" method="post" action="/offers/{{ offer.id }}/mark-irrelevant"><input type="hidden" name="purchase_id" value="{{ purchase.id }}"/><button type="submit">Mark irrelevant</button></form>
+              <form class="inline-form" method="post" action="/offers/{{ offer.id }}/exclude"><input type="hidden" name="purchase_id" value="{{ purchase.id }}"/><button type="submit">Exclude</button></form>
+              <form class="inline-form" method="post" action="/offers/{{ offer.id }}/force-include"><input type="hidden" name="purchase_id" value="{{ purchase.id }}"/><button type="submit">Force include</button></form>
+              <details>
+                <summary>Update</summary>
+                <form method="post" action="/offers/{{ offer.id }}/update">
+                  <input type="hidden" name="purchase_id" value="{{ purchase.id }}"/>
+                  <input name="available_quantity" placeholder="qty" />
+                  <input name="unit_price" placeholder="unit price" />
+                  <input name="delivery_price" placeholder="delivery" />
+                  <input name="manual_comment" placeholder="comment" />
+                  <button type="submit">Save</button>
+                </form>
+              </details>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  {% endfor %}
+
+  {% if raw_payload_pretty %}
+  <details>
+    <summary>Raw payload</summary>
+    <pre>{{ raw_payload_pretty }}</pre>
+  </details>
+  {% endif %}
+
+  <h2>Audit Log</h2>
+  {% if audit_rows %}
+  <table>
+    <thead>
+      <tr><th>Time</th><th>Entity</th><th>Action</th><th>Comment</th></tr>
+    </thead>
+    <tbody>
+      {% for row in audit_rows %}
+      <tr>
+        <td>{{ row.created_at }}</td>
+        <td>{{ row.entity_type }}:{{ row.entity_id }}</td>
+        <td>{{ row.action }}</td>
+        <td>{{ row.comment if row.comment else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No audit events yet.</p>
+  {% endif %}
+</body>
+</html>

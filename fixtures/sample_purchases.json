@@ -1,0 +1,35 @@
+[
+  {
+    "external_id": "EAT-001",
+    "title": "Office paper and stationery",
+    "region_code": "77",
+    "max_total_price": 18000,
+    "submission_deadline": "2026-05-12T18:00:00",
+    "items": [
+      {"item_name": "Paper A4 80gsm", "quantity": 40, "unit": "pack"},
+      {"item_name": "Blue ballpoint pen", "quantity": 120, "unit": "pcs"}
+    ]
+  },
+  {
+    "external_id": "MOS-102",
+    "title": "Disposable gloves purchase",
+    "region_code": "50",
+    "max_total_price": 42000,
+    "submission_deadline": "2026-05-05T12:00:00",
+    "items": [
+      {"item_name": "Nitrile gloves size M", "quantity": 300, "unit": "pair"},
+      {"item_name": "Nitrile gloves size L", "quantity": 250, "unit": "pair"}
+    ]
+  },
+  {
+    "external_id": "EAT-204",
+    "title": "Cleaning kits",
+    "region_code": "77",
+    "max_total_price": 26000,
+    "submission_deadline": "2026-05-20T10:00:00",
+    "items": [
+      {"item_name": "Microfiber cloth", "quantity": 200, "unit": "pcs"},
+      {"item_name": "Floor cleaner 1L", "quantity": 70, "unit": "bottle"}
+    ]
+  }
+]

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Strategies</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a></p>
+  <h1>Participation Strategies</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Active</th>
+        <th>Rules</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in strategies %}
+      <tr>
+        <td>{{ s.name }}</td>
+        <td>{{ s.description if s.description else '-' }}</td>
+        <td>{{ 'yes' if s.is_active else 'no' }}</td>
+        <td>
+          margin >= {{ s.min_margin_percent }}%; profit >= {{ s.min_profit_amount }};
+          max risk = {{ s.max_risk_level }};
+          unknown delivery={{ s.allow_unknown_delivery }};
+          unknown supplier={{ s.allow_unknown_supplier }};
+          manual review={{ s.allow_manual_review_items }}
+        </td>
+        <td>
+          {% if not s.is_active %}
+          <form method="post" action="/strategies/activate">
+            <input type="hidden" name="name" value="{{ s.name }}" />
+            <button type="submit">Activate</button>
+          </form>
+          {% else %}
+          active
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

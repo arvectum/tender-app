@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Daily Report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a></p>
+  <h1>Daily Digest</h1>
+  <p>Generated at: {{ digest.generated_at }}</p>
+  <ul>
+    <li>New purchases 24h: {{ digest.new_purchases_24h }}</li>
+    <li>Calculated 24h: {{ digest.calculated_24h }}</li>
+    <li>Strong recommend: {{ digest.strong_recommend_count }}</li>
+    <li>Recommend: {{ digest.recommend_count }}</li>
+    <li>Needs review: {{ digest.needs_review_count }}</li>
+  </ul>
+
+  <h2>Top opportunities</h2>
+  <table>
+    <thead><tr><th>External ID</th><th>Source</th><th>NMC</th><th>Profit</th><th>Margin</th><th>Score</th><th>Deadline</th><th>Next action</th></tr></thead>
+    <tbody>
+      {% for row in digest.top_rows %}
+      <tr>
+        <td>{{ row.external_id }}</td>
+        <td>{{ row.source }}</td>
+        <td>{{ row.max_total_price }}</td>
+        <td>{{ row.profit_after_tax }}</td>
+        <td>{{ row.margin_after_tax_percent }}</td>
+        <td>{{ row.score_total }}</td>
+        <td>{{ row.deadline if row.deadline else '-' }}</td>
+        <td>{{ row.next_action }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Manual attention</h2>
+  <table>
+    <thead><tr><th>External ID</th><th>Decision</th><th>Risk</th><th>Reason</th><th>Next action</th></tr></thead>
+    <tbody>
+      {% for row in digest.attention_rows %}
+      <tr>
+        <td>{{ row.external_id }}</td>
+        <td>{{ row.decision }}</td>
+        <td>{{ row.risk_level }}</td>
+        <td>{{ row.reason }}</td>
+        <td>{{ row.next_action }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

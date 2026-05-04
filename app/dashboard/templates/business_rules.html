@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Business Rules</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+    input, button { padding: 6px 8px; }
+    .warn { background: #fff8dc; border: 1px solid #e7ce8e; padding: 10px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a> | <a href="/suppliers">Suppliers</a></p>
+  <h1>Business Rules</h1>
+  <div class="warn">{{ warning }}</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Key</th>
+        <th>Value</th>
+        <th>Source</th>
+        <th>Description</th>
+        <th>Update</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.key }}</td>
+        <td>{{ row.value }}</td>
+        <td>{{ row.source }}</td>
+        <td>{{ row.description if row.description else '-' }}</td>
+        <td>
+          <form method="post" action="/settings/business-rules">
+            <input type="hidden" name="key" value="{{ row.key }}" />
+            <input name="value" value="{{ row.value }}" />
+            <input name="description" value="{{ row.description if row.description else '' }}" placeholder="description" />
+            <button type="submit">Save</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

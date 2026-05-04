@@ -1,0 +1,58 @@
+cartridges:
+  keywords:
+    - картридж
+    - тонер
+    - барабан
+  important_fields:
+    - brand
+    - model
+    - article
+    - color
+    - original_required
+
+paper:
+  keywords:
+    - бумага
+    - офисная бумага
+    - а4
+    - a4
+  important_fields:
+    - size
+    - density
+    - package_quantity
+
+furniture:
+  keywords:
+    - стул
+    - стол
+    - шкаф
+    - тумба
+  important_fields:
+    - material
+    - size
+    - color
+
+computer_equipment:
+  keywords:
+    - монитор
+    - клавиатура
+    - мышь
+    - ноутбук
+    - системный блок
+    - принтер
+  important_fields:
+    - brand
+    - model
+    - size
+    - specs
+
+cleaning_supplies:
+  keywords:
+    - средство
+    - мыло
+    - салфетки
+    - перчатки
+  important_fields:
+    - volume
+    - package_quantity
+    - material

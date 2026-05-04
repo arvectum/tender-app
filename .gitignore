@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
+.env.*
+!.env.example
+
+# Runtime state
+data/*.db
+data/browser_state/*.json
+data/locks/*.lock
+logs/*.log
+exports/*.xlsx
+backups/*.sql
+artifacts/screenshots/*.png
+
+# Build metadata
+*.egg-info/
+
+# Keep folders
+!data/.gitkeep
+!data/browser_state/.gitkeep
+!data/locks/.gitkeep
+!logs/.gitkeep
+!exports/.gitkeep
+!backups/.gitkeep

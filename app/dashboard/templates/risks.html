@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Risks</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a></p>
+  <h1>Risk Dashboard</h1>
+  <ul>
+    <li>Positions without price: {{ no_price_count }}</li>
+    <li>Insufficient quantity: {{ insufficient_count }}</li>
+    <li>Offers hard reject: {{ hard_reject_count }}</li>
+    <li>Offers unknown delivery: {{ unknown_delivery_count }}</li>
+    <li>Offers risky suppliers: {{ risky_supplier_count }}</li>
+  </ul>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Purchase</th>
+        <th>Decision</th>
+        <th>Risk level</th>
+        <th>Risk score</th>
+        <th>Reason</th>
+        <th>Deadline</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for purchase, score in rows %}
+      <tr>
+        <td><a href="/purchases/{{ purchase.id }}">{{ purchase.external_id }}</a></td>
+        <td>{{ score.decision }}</td>
+        <td>{{ score.risk_level }}</td>
+        <td>{{ score.score_risk }}</td>
+        <td>{{ score.decision_reason if score.decision_reason else '-' }}</td>
+        <td>{{ score.deadline_status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

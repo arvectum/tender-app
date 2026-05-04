@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Suppliers</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+    input, select, button { padding: 6px 8px; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a> | <a href="/settings/business-rules">Business rules</a></p>
+  <h1>Suppliers</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Status</th>
+        <th>Rating</th>
+        <th>Comment</th>
+        <th>Update</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for supplier in suppliers %}
+      <tr>
+        <td>{{ supplier.name }}</td>
+        <td>{{ supplier.status }}</td>
+        <td>{{ supplier.rating if supplier.rating is not none else '-' }}</td>
+        <td>{{ supplier.comment if supplier.comment else '-' }}</td>
+        <td>
+          <form method="post" action="/suppliers/{{ supplier.id }}/update">
+            <select name="status">
+              <option value="unknown" {% if supplier.status == 'unknown' %}selected{% endif %}>unknown</option>
+              <option value="trusted" {% if supplier.status == 'trusted' %}selected{% endif %}>trusted</option>
+              <option value="risky" {% if supplier.status == 'risky' %}selected{% endif %}>risky</option>
+              <option value="blocked" {% if supplier.status == 'blocked' %}selected{% endif %}>blocked</option>
+            </select>
+            <input name="comment" placeholder="comment" value="{{ supplier.comment if supplier.comment else '' }}" />
+            <button type="submit">Save</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

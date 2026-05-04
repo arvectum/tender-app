@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Watchlist</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a></p>
+  <h1>Watchlist</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Purchase</th>
+        <th>Status</th>
+        <th>Note</th>
+        <th>Updated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td><a href="/purchases/{{ e.purchase_id }}">{{ e.purchase.external_id if e.purchase else e.purchase_id }}</a></td>
+        <td>{{ e.status }}</td>
+        <td>{{ e.note if e.note else '-' }}</td>
+        <td>{{ e.updated_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

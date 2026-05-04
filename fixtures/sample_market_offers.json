@@ -1,0 +1,12 @@
+[
+  {"item_name": "Paper A4 80gsm", "supplier_name": "PaperTrade", "unit_price": 290, "available_quantity": 20, "delivery_price": 600, "region_code": "77", "source": "fixture"},
+  {"item_name": "Paper A4 80gsm", "supplier_name": "OfficeLine", "unit_price": 315, "available_quantity": 50, "delivery_price": 450, "region_code": "77", "source": "fixture"},
+  {"item_name": "Blue ballpoint pen", "supplier_name": "OfficeLine", "unit_price": 18, "available_quantity": 60, "delivery_price": 300, "region_code": "77", "source": "fixture"},
+  {"item_name": "Blue ballpoint pen", "supplier_name": "BudgetPens", "unit_price": 20, "available_quantity": 200, "delivery_price": 350, "region_code": "77", "source": "fixture"},
+  {"item_name": "Nitrile gloves size M", "supplier_name": "MedSupply", "unit_price": 48, "available_quantity": 220, "delivery_price": 900, "region_code": "50", "source": "fixture"},
+  {"item_name": "Nitrile gloves size M", "supplier_name": "HealthStock", "unit_price": 53, "available_quantity": 200, "delivery_price": null, "region_code": "50", "source": "fixture"},
+  {"item_name": "Nitrile gloves size L", "supplier_name": "MedSupply", "unit_price": 49, "available_quantity": 260, "delivery_price": 900, "region_code": "50", "source": "fixture"},
+  {"item_name": "Microfiber cloth", "supplier_name": "CleanHouse", "unit_price": 35, "available_quantity": 80, "delivery_price": 550, "region_code": "77", "source": "fixture"},
+  {"item_name": "Microfiber cloth", "supplier_name": "EconomTextile", "unit_price": 39, "available_quantity": 70, "delivery_price": 300, "region_code": "77", "source": "fixture"},
+  {"item_name": "Floor cleaner 1L", "supplier_name": "CleanHouse", "unit_price": 145, "available_quantity": 65, "delivery_price": 550, "region_code": "77", "source": "fixture"}
+]

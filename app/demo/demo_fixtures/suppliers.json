@@ -1,0 +1,7 @@
+[
+  {"name":"ООО Ромашка","normalized_name":"ооо ромашка","status":"trusted","rating":4.8},
+  {"name":"ООО Бумага","normalized_name":"ооо бумага","status":"trusted","rating":4.5},
+  {"name":"ООО Мебель","normalized_name":"ооо мебель","status":"risky","rating":3.2},
+  {"name":"ИП Плохой","normalized_name":"ип плохой","status":"blocked","rating":1.1},
+  {"name":"ООО МедСнаб","normalized_name":"ооо медснаб","status":"trusted","rating":4.4}
+]

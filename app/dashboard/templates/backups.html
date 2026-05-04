@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Backups</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a></p>
+  <h1>Backups</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>File</th>
+        <th>Modified</th>
+        <th>Size (bytes)</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in backups %}
+      <tr>
+        <td>{{ row.name }}</td>
+        <td>{{ row.modified_at }}</td>
+        <td>{{ row.size_bytes }}</td>
+        <td>
+          <a href="/backups/download?path={{ row.path }}">download</a>
+          {% if current_user and current_user.role == 'admin' %}
+          <form method="post" action="/backups/restore" style="display:inline-block">
+            <input type="hidden" name="file_path" value="{{ row.path }}" />
+            <input type="hidden" name="yes" value="true" />
+            <button type="submit">restore</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

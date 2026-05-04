@@ -1,0 +1,12 @@
+[
+  {"purchase_external_id":"DEMO-001","offer_title":"HP CE410A оригинальный","seller_name":"ООО Ромашка","supplier_status":"trusted","unit_price":9000,"available_quantity":5,"delivery_price":0,"relevance_score":0.96,"is_relevant":true},
+  {"purchase_external_id":"DEMO-002","offer_title":"Бумага А4 80 г/м2","seller_name":"ООО Бумага","supplier_status":"trusted","unit_price":650,"available_quantity":100,"delivery_price":3000,"relevance_score":0.93,"is_relevant":true},
+  {"purchase_external_id":"DEMO-003","offer_title":"Стул офисный ткань","seller_name":"ООО Мебель","supplier_status":"risky","unit_price":12000,"available_quantity":20,"delivery_price":null,"delivery_unknown":true,"risk_flags":["delivery_unknown"],"relevance_score":0.91,"is_relevant":true},
+  {"purchase_external_id":"DEMO-004","offer_title":"Средство 5л","seller_name":"ИП Чистота","supplier_status":"unknown","unit_price":700,"available_quantity":50,"delivery_price":1000,"relevance_score":0.88,"is_relevant":true},
+  {"purchase_external_id":"DEMO-005","offer_title":"Клавиатура USB","seller_name":"ИП Плохой","supplier_status":"blocked","unit_price":800,"available_quantity":100,"delivery_price":0,"relevance_score":0.9,"is_relevant":true},
+  {"purchase_external_id":"DEMO-006","offer_title":"Мышь USB","seller_name":"ООО Переферия","supplier_status":"trusted","unit_price":450,"available_quantity":15,"delivery_price":700,"relevance_score":0.92,"is_relevant":true},
+  {"purchase_external_id":"DEMO-007","offer_title":"Тонер 305A","seller_name":"ООО Ромашка","supplier_status":"trusted","unit_price":4200,"available_quantity":3,"delivery_price":600,"relevance_score":0.9,"is_relevant":true},
+  {"purchase_external_id":"DEMO-008","offer_title":"Шкаф архивный","seller_name":"ООО Мебель","supplier_status":"risky","unit_price":22000,"available_quantity":10,"delivery_price":10000,"relevance_score":0.94,"is_relevant":true},
+  {"purchase_external_id":"DEMO-009","offer_title":"Перчатки нитрил","seller_name":"ООО МедСнаб","supplier_status":"trusted","unit_price":65,"available_quantity":150,"delivery_price":500,"relevance_score":0.95,"is_relevant":true},
+  {"purchase_external_id":"DEMO-010","offer_title":"CE410A совместимый","seller_name":"ООО Аналог","supplier_status":"unknown","unit_price":3000,"available_quantity":20,"delivery_price":300,"risk_flags":["possible_analogue"],"relevance_score":0.55,"is_relevant":false}
+]

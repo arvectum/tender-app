@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tender Calculator Dashboard</title>
+  <style>
+    body { font-family: "Segoe UI", Arial, sans-serif; margin: 24px; color: #1f2a37; background: #f7f9fc; }
+    .layout { max-width: 1600px; margin: 0 auto; }
+    .card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 14px 0 16px; }
+    .card { background: white; border: 1px solid #dbe3ef; border-radius: 10px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .card h3 { margin: 0 0 6px; font-size: 13px; color: #52627a; }
+    .card .value { font-size: 22px; font-weight: 700; }
+    .split { display: grid; grid-template-columns: 1.3fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .panel { background: white; border: 1px solid #dbe3ef; border-radius: 10px; padding: 12px; }
+    .panel h3 { margin: 0 0 8px; font-size: 15px; }
+    .muted { color: #62738a; font-size: 13px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #eef3fb; position: sticky; top: 0; z-index: 1; }
+    a { color: #0b63ce; text-decoration: none; }
+    .badge { padding: 3px 8px; border-radius: 999px; font-size: 12px; display: inline-block; border: 1px solid transparent; }
+    .badge.strong_recommend, .badge.strong_buy, .badge.ok, .badge.success { background: #e8f7ed; border-color: #bae8c8; color: #22663a; }
+    .badge.recommend, .badge.running { background: #e9f2ff; border-color: #bfd8ff; color: #1f4f8e; }
+    .badge.needs_manual_review, .badge.needs_review, .badge.pending, .badge.deadline_soon { background: #fff7df; border-color: #f6df8f; color: #735200; }
+    .badge.reject, .badge.not_recommended, .badge.failed, .badge.error { background: #ffe8e8; border-color: #f2b0b0; color: #8e1f1f; }
+    .badge.low { background: #ffe8e8; border-color: #f2b0b0; color: #8e1f1f; }
+    .badge.medium, .badge.draft { background: #fff7df; border-color: #f6df8f; color: #735200; }
+    .badge.high, .badge.needs_review { background: #ffe8e8; border-color: #f2b0b0; color: #8e1f1f; }
+    .badge.approved { background: #e8f7ed; border-color: #bae8c8; color: #22663a; }
+    .filters { margin: 12px 0 18px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+    .filters label { display: flex; flex-direction: column; font-size: 12px; gap: 4px; }
+    select, button, input { padding: 6px 8px; }
+    .top-links { display: flex; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
+    .small-table th, .small-table td { font-size: 13px; padding: 6px; }
+  </style>
+</head>
+<body>
+  <div class="layout">
+  <h1>Tender Small Volume Calculator</h1>
+  {% if current_user %}
+  <p>Signed in as <strong>{{ current_user.username }}</strong> ({{ current_user.role }})</p>
+  <form method="post" action="/logout"><button type="submit">Logout</button></form>
+  {% endif %}
+  <div class="top-links">
+    <a href="/jobs">Jobs</a>
+    <a href="/diagnostics">Diagnostics</a>
+    <a href="/suppliers">Suppliers</a>
+    <a href="/users">Users</a>
+    <a href="/settings/business-rules">Business rules</a>
+    <a href="/strategies">Strategies</a>
+    <a href="/watchlist">Watchlist</a>
+    <a href="/risks">Risks</a>
+    <a href="/reports/daily">Daily report</a>
+    <a href="/notifications">Notifications</a>
+    <a href="/backups">Backups</a>
+    <a href="/export/current-view">Export current view</a>
+  </div>
+
+  <h2>Decision Center</h2>
+  <p class="muted">Top opportunities, Strong recommend, Needs review, Deadline soon, Failed jobs, Watchlist и Last daily digest.</p>
+
+  <div class="card-grid">
+    <div class="card"><h3>Strong Recommend</h3><div class="value">{{ strong_recommend_count }}</div></div>
+    <div class="card"><h3>Needs Review</h3><div class="value">{{ needs_review_count }}</div></div>
+    <div class="card"><h3>Deadline Soon</h3><div class="value">{{ deadline_soon_count }}</div></div>
+    <div class="card"><h3>Watchlist Active</h3><div class="value">{{ watchlist_active_count }}</div></div>
+    <div class="card"><h3>Failed Jobs (24h)</h3><div class="value">{{ failed_jobs_count }}</div></div>
+    <div class="card"><h3>Last Digest</h3><div class="value">{{ latest_digest.generated_at[:16] if latest_digest and latest_digest.generated_at else '-' }}</div></div>
+  </div>
+
+  <div class="split">
+    <div class="panel">
+      <h3>Top Opportunities</h3>
+      {% if top_opportunities %}
+      <table class="small-table">
+        <thead><tr><th>Purchase</th><th>Decision</th><th>Risk</th><th>Score</th><th>Next action</th></tr></thead>
+        <tbody>
+        {% for row in top_opportunities %}
+          <tr>
+            <td><a href="/purchases/{{ row.purchase_id }}">#{{ row.purchase_id }}</a></td>
+            <td><span class="badge {{ row.decision }}">{{ row.decision }}</span></td>
+            <td><span class="badge {{ row.risk_level }}">{{ row.risk_level }}</span></td>
+            <td>{{ row.score_total }}</td>
+            <td>{{ row.next_action if row.next_action else '-' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No opportunities yet. Run `calculate` and `evaluate`.</p>
+      {% endif %}
+    </div>
+    <div class="panel">
+      <h3>Last Daily Digest</h3>
+      {% if latest_digest %}
+      <p>new_purchases_24h: <strong>{{ latest_digest.new_purchases_24h }}</strong></p>
+      <p>calculated_24h: <strong>{{ latest_digest.calculated_24h }}</strong></p>
+      <p>strong_recommend: <strong>{{ latest_digest.strong_recommend_count }}</strong></p>
+      <p>recommend: <strong>{{ latest_digest.recommend_count }}</strong></p>
+      <p>needs_review: <strong>{{ latest_digest.needs_review_count }}</strong></p>
+      {% else %}
+      <p class="muted">Daily digest is not available.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom: 14px;">
+    <h3>Next Actions</h3>
+    <table class="small-table">
+      <thead><tr><th>Action</th><th>Count</th></tr></thead>
+      <tbody>
+        <tr><td>Заполнить цены</td><td>{{ next_actions.fill_prices }}</td></tr>
+        <tr><td>Проверить low data quality</td><td>{{ next_actions.check_low_data_quality }}</td></tr>
+        <tr><td>Проверить high risk</td><td>{{ next_actions.check_high_risk }}</td></tr>
+        <tr><td>Approve decisions</td><td>{{ next_actions.approve_decisions }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <form class="filters" method="get" action="/">
+    <label>Source
+      <select name="source">
+        <option value="">all</option>
+        {% for value in source_options %}
+        <option value="{{ value }}" {% if source == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Status
+      <select name="status">
+        <option value="">all</option>
+        {% for value in status_options %}
+        <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Region
+      <select name="region">
+        <option value="">all</option>
+        {% for value in region_options %}
+        <option value="{{ value }}" {% if region == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label>Recommendation
+      <select name="recommendation_status">
+        <option value="">all</option>
+        {% for value in recommendation_options %}
+        <option value="{{ value }}" {% if recommendation_status == value %}selected{% endif %}>{{ value }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label><input type="checkbox" name="has_problem_items" value="true" {% if has_problem_items %}checked{% endif %}/> проблемные позиции</label>
+    <label><input type="checkbox" name="price_not_found" value="true" {% if price_not_found %}checked{% endif %}/> цена не найдена</label>
+    <label><input type="checkbox" name="needs_manual_review" value="true" {% if needs_manual_review %}checked{% endif %}/> ручная проверка</label>
+
+    <label>Sort
+      <select name="sort_by">
+        <option value="score_desc" {% if sort_by == 'score_desc' %}selected{% endif %}>score</option>
+        <option value="margin_desc" {% if sort_by == 'margin_desc' %}selected{% endif %}>margin</option>
+        <option value="profit_desc" {% if sort_by == 'profit_desc' %}selected{% endif %}>profit</option>
+        <option value="deadline_asc" {% if sort_by == 'deadline_asc' %}selected{% endif %}>deadline</option>
+        <option value="max_price_desc" {% if sort_by == 'max_price_desc' %}selected{% endif %}>max price</option>
+      </select>
+    </label>
+
+    <button type="submit">Apply</button>
+    <a href="/">Reset</a>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Source</th>
+        <th>External ID</th>
+        <th>Title</th>
+        <th>Status</th>
+        <th>Region</th>
+        <th>Risk flags</th>
+        <th>Data quality</th>
+        <th>Max Total Price</th>
+        <th>Estimated Cost</th>
+        <th>Profit</th>
+        <th>Margin %</th>
+        <th>Margin After Tax %</th>
+        <th>Decision</th>
+        <th>Decision status</th>
+        <th>Score Total</th>
+        <th>Explanation</th>
+        <th>Risk level</th>
+        <th>Cash ROI %</th>
+        <th>Deadline status</th>
+        <th>Next action</th>
+        <th>Watchlist</th>
+        <th>Supplier risk count</th>
+        <th>Last calculated</th>
+        <th>Last price search</th>
+        <th>Job status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set purchase = row.purchase %}
+      {% set calc = row.calc %}
+      {% set decision = row.decision_score %}
+      {% set watch = row.watchlist %}
+      <tr>
+        <td><a href="/purchases/{{ purchase.id }}">{{ purchase.id }}</a></td>
+        <td>{{ purchase.source }}</td>
+        <td>{{ purchase.external_id }}</td>
+        <td>{{ purchase.title }}</td>
+        <td>{{ purchase.status if purchase.status else '-' }}</td>
+        <td>{{ purchase.region if purchase.region else '-' }}</td>
+        <td>{{ ', '.join(purchase.risk_flags) if purchase.risk_flags else '-' }}</td>
+        <td><span class="badge {{ purchase.data_quality }}">{{ purchase.data_quality if purchase.data_quality else '-' }}</span></td>
+        <td>{{ purchase.max_total_price if purchase.max_total_price is not none else '-' }}</td>
+        <td>{{ calc.estimated_cost if calc else '-' }}</td>
+        <td>{{ calc.estimated_profit if calc else '-' }}</td>
+        <td>{{ calc.margin_percent if calc else '-' }}</td>
+        <td>{{ calc.margin_after_tax_percent if calc else '-' }}</td>
+        <td>{% if decision %}<span class="badge {{ decision.decision }}">{{ decision.decision }}</span>{% else %}-{% endif %}</td>
+        <td>{% if decision %}<span class="badge {{ decision.decision_status }}">{{ decision.decision_status }}</span>{% else %}-{% endif %}</td>
+        <td>{{ decision.score_total if decision else '-' }}</td>
+        <td>{{ calc.explanation_summary if calc and calc.explanation_summary else '-' }}</td>
+        <td>{{ decision.risk_level if decision else (calc.risk_level if calc else '-') }}</td>
+        <td>{{ decision.cash_roi_percent if decision and decision.cash_roi_percent is not none else '-' }}</td>
+        <td>{{ decision.deadline_status if decision else purchase.deadline_status }}</td>
+        <td>{{ decision.next_action if decision and decision.next_action else '-' }}</td>
+        <td>{{ watch.status if watch else '-' }}</td>
+        <td>{{ risky_supplier_counts.get(purchase.id, 0) }}</td>
+        <td>{{ calc.computed_at if calc else '-' }}</td>
+        <td>{{ purchase.parsed_at if purchase.parsed_at else '-' }}</td>
+        <td>
+          {% set j = latest_jobs_by_type.get('calculate') %}
+          {% if j %}
+          <span class="badge {{ j.status }}">{{ j.status }}</span>
+          {% else %}
+          -
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="/purchases/{{ purchase.id }}/recalculate">
+            <button type="submit">Пересчитать</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</body>
+</html>

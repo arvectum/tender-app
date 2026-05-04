@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Users</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a></p>
+  <h1>Users</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Active</th>
+        <th>Last login</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>{{ row.username }}</td>
+        <td>{{ row.email }}</td>
+        <td>{{ row.role }}</td>
+        <td>{{ row.is_active }}</td>
+        <td>{{ row.last_login_at if row.last_login_at else '-' }}</td>
+        <td>
+          <form method="post" action="/users/{{ row.id }}/toggle">
+            <input type="hidden" name="is_active" value="{{ 'false' if row.is_active else 'true' }}" />
+            <button type="submit">{{ 'Disable' if row.is_active else 'Enable' }}</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

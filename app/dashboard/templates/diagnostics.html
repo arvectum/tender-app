@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Diagnostics</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background: #f4f4f4; }
+    .ok { color: green; }
+    .fail { color: red; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a> | <a href="/jobs">Jobs</a></p>
+  <h1>Diagnostics</h1>
+  <table>
+    <tr><th>Check</th><th>Value</th></tr>
+    <tr><td>database connection</td><td class="{{ 'ok' if db_ok else 'fail' }}">{{ 'ok' if db_ok else 'fail' }}</td></tr>
+    <tr><td>last parse mos_portal</td><td>{{ last_parse_mos.created_at if last_parse_mos else '-' }}</td></tr>
+    <tr><td>last parse eat</td><td>{{ last_parse_eat.created_at if last_parse_eat else '-' }}</td></tr>
+    <tr><td>last calculate</td><td>{{ last_calculate.created_at if last_calculate else '-' }}</td></tr>
+    <tr><td>last export</td><td>{{ last_export.created_at if last_export else '-' }}</td></tr>
+    <tr><td>count purchases</td><td>{{ count_purchases }}</td></tr>
+    <tr><td>count items</td><td>{{ count_items }}</td></tr>
+    <tr><td>count offers</td><td>{{ count_offers }}</td></tr>
+    <tr><td>count recommended</td><td>{{ count_recommended }}</td></tr>
+    <tr><td>count needs_review</td><td>{{ count_needs_review }}</td></tr>
+    <tr><td>count failed jobs last 24h</td><td>{{ failed_jobs_last_24h }}</td></tr>
+    <tr><td>NO_PROXY summary</td><td>{{ ', '.join(no_proxy) }}</td></tr>
+    <tr><td>NO_PROXY missing required hosts</td><td>{{ ', '.join(no_proxy_missing) if no_proxy_missing else '-' }}</td></tr>
+    <tr><td>browser state mos_portal exists</td><td>{{ browser_state_mos_exists }}</td></tr>
+    <tr><td>browser state eat exists</td><td>{{ browser_state_eat_exists }}</td></tr>
+    <tr><td>scheduler status</td><td>{{ scheduler_status }}</td></tr>
+  </table>
+</body>
+</html>

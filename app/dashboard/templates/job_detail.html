@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Job {{ job.id }}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    pre { white-space: pre-wrap; background: #f8f8f8; border: 1px solid #ddd; padding: 10px; }
+  </style>
+</head>
+<body>
+  <p><a href="/jobs">Back to jobs</a> | <a href="/">Dashboard</a></p>
+  <h1>Job {{ job.id }}</h1>
+  <p><strong>Type:</strong> {{ job.job_type }}</p>
+  <p><strong>Source:</strong> {{ job.source if job.source else '-' }}</p>
+  <p><strong>Status:</strong> {{ job.status }}</p>
+  <p><strong>Started:</strong> {{ job.started_at if job.started_at else '-' }}</p>
+  <p><strong>Finished:</strong> {{ job.finished_at if job.finished_at else '-' }}</p>
+  <p><strong>Duration:</strong> {{ job.duration_seconds if job.duration_seconds else '-' }}</p>
+
+  <h2>params_json</h2>
+  <pre>{{ params_pretty }}</pre>
+
+  <h2>result_json</h2>
+  <pre>{{ result_pretty }}</pre>
+
+  <h2>error_message</h2>
+  <pre>{{ job.error_message if job.error_message else '' }}</pre>
+
+  <h2>traceback</h2>
+  <pre>{{ job.traceback if job.traceback else '' }}</pre>
+
+  <h2>logs excerpt</h2>
+  <pre>{{ logs_excerpt if logs_excerpt else '' }}</pre>
+</body>
+</html>

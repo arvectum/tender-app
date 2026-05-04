@@ -1,0 +1,12 @@
+[
+  {"external_id":"DEMO-001","title":"Поставка картриджей HP CE410A","region":"Москва","max_total_price":120000,"items":[{"name":"Картридж HP CE410A оригинальный","quantity":4,"max_total_price":48000}]},
+  {"external_id":"DEMO-002","title":"Поставка бумаги офисной А4","region":"Москва","max_total_price":80000,"items":[{"name":"Бумага А4 80 г/м2 500 листов","quantity":40,"max_total_price":40000}]},
+  {"external_id":"DEMO-003","title":"Поставка офисных стульев","region":"Московская область","max_total_price":220000,"items":[{"name":"Стул офисный черный ткань","quantity":12,"max_total_price":180000}]},
+  {"external_id":"DEMO-004","title":"Поставка моющих средств","region":"Москва","max_total_price":70000,"items":[{"name":"Средство для уборки 5л","quantity":30,"max_total_price":35000}]},
+  {"external_id":"DEMO-005","title":"Поставка клавиатур","region":"Москва","max_total_price":90000,"items":[{"name":"Клавиатура проводная USB","quantity":25,"max_total_price":50000}]},
+  {"external_id":"DEMO-006","title":"Поставка мышей","region":"Москва","max_total_price":85000,"items":[{"name":"Мышь проводная USB","quantity":25,"max_total_price":45000}]},
+  {"external_id":"DEMO-007","title":"Поставка тонера","region":"Москва","max_total_price":110000,"items":[{"name":"Тонер для HP 305A","quantity":10,"max_total_price":60000}]},
+  {"external_id":"DEMO-008","title":"Поставка шкафов металлических","region":"Московская область","max_total_price":300000,"items":[{"name":"Шкаф металлический архивный","quantity":8,"max_total_price":240000}]},
+  {"external_id":"DEMO-009","title":"Поставка перчаток нитриловых","region":"Москва","max_total_price":65000,"items":[{"name":"Перчатки нитриловые M","quantity":200,"max_total_price":30000}]},
+  {"external_id":"DEMO-010","title":"Поставка картриджей совместимых","region":"Москва","max_total_price":60000,"items":[{"name":"Картридж HP CE410A оригинальный","quantity":5,"max_total_price":45000}]}
+]

@@ -1,0 +1,5 @@
+[
+  {"username":"admin","email":"admin@example.com","role":"admin","password":"AdminDemo123!"},
+  {"username":"operator","email":"operator@example.com","role":"operator","password":"OperatorDemo123!"},
+  {"username":"viewer","email":"viewer@example.com","role":"viewer","password":"ViewerDemo123!"}
+]

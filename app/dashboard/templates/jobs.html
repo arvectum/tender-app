@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Jobs</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; }
+    .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <p><a href="/">Dashboard</a> | <a href="/diagnostics">Diagnostics</a></p>
+  <h1>Jobs</h1>
+
+  <form method="get" class="filters">
+    <select name="status"><option value="">all status</option>{% for s in statuses %}<option value="{{ s }}" {% if status_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    <select name="job_type"><option value="">all types</option>{% for t in types %}<option value="{{ t }}" {% if type_filter==t %}selected{% endif %}>{{ t }}</option>{% endfor %}</select>
+    <select name="source"><option value="">all sources</option>{% for s in sources %}<option value="{{ s }}" {% if source_filter==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+    <input type="text" name="date_from" value="{{ date_from or '' }}" placeholder="date_from iso" />
+    <input type="text" name="date_to" value="{{ date_to or '' }}" placeholder="date_to iso" />
+    <button type="submit">Filter</button>
+  </form>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>job_type</th><th>source</th><th>status</th><th>started</th><th>finished</th><th>duration</th><th>result</th><th>error</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr>
+        <td><a href="/jobs/{{ j.id }}">{{ j.id }}</a></td>
+        <td>{{ j.job_type }}</td>
+        <td>{{ j.source if j.source else '-' }}</td>
+        <td>{{ j.status }}</td>
+        <td>{{ j.started_at if j.started_at else '-' }}</td>
+        <td>{{ j.finished_at if j.finished_at else '-' }}</td>
+        <td>{{ j.duration_seconds if j.duration_seconds else '-' }}</td>
+        <td>{{ j.result_json if j.result_json else '-' }}</td>
+        <td>{{ j.error_message if j.error_message else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>
