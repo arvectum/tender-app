@@ -9,6 +9,7 @@ from app.config import Settings, get_settings
 FORCED_NO_PROXY_HOSTS = {
     "zakupki.mos.ru",
     "api.zakupki.mos.ru",
+    "agregatoreat.ru",
 }
 
 

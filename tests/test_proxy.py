@@ -46,6 +46,19 @@ def test_forced_no_proxy_hosts_bypass_even_without_no_proxy_rules() -> None:
     assert router.should_bypass_proxy("https://api.zakupki.mos.ru/purchases") is True
 
 
+def test_forced_no_proxy_for_agregatoreat_even_without_no_proxy_rules() -> None:
+    router = ProxyRouter(
+        use_proxy=True,
+        http_proxy="http://proxy.example:8080",
+        https_proxy="http://proxy.example:8080",
+        no_proxy_hosts=[],
+    )
+
+    assert router.should_bypass_proxy("https://agregatoreat.ru/purchases") is True
+    assert router.should_bypass_proxy("https://login.agregatoreat.ru/") is True
+    assert router.decide("https://agregatoreat.ru/purchases").use_proxy is False
+
+
 def test_external_domain_can_use_proxy() -> None:
     router = ProxyRouter(
         use_proxy=True,
