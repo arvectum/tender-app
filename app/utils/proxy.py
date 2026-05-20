@@ -6,6 +6,12 @@ from urllib.parse import urlparse
 from app.config import Settings, get_settings
 
 
+FORCED_NO_PROXY_HOSTS = {
+    "zakupki.mos.ru",
+    "api.zakupki.mos.ru",
+}
+
+
 @dataclass(frozen=True)
 class ProxyDecision:
     use_proxy: bool
@@ -43,6 +49,10 @@ class ProxyRouter:
 
         if hostname in {"localhost", "127.0.0.1", "::1"}:
             return True
+
+        for forced_host in FORCED_NO_PROXY_HOSTS:
+            if hostname == forced_host or hostname.endswith(f".{forced_host}"):
+                return True
 
         for rule in self.no_proxy_hosts:
             if not rule:
