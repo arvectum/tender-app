@@ -22,6 +22,8 @@ class MosPortalApiClient:
         self.settings = settings or get_settings()
         self.proxy_router = proxy_router or ProxyRouter.from_settings(self.settings)
         self.session = requests.Session()
+        # Ignore ambient *_PROXY env vars; routing is controlled only via ProxyRouter.
+        self.session.trust_env = False
         self.session.headers.update({
             "User-Agent": self.settings.connector_user_agent,
             "Accept": "application/json, text/plain, */*",
@@ -31,6 +33,11 @@ class MosPortalApiClient:
         warnings: list[str] = []
         errors: list[str] = []
         aggregated: list[dict[str, Any]] = []
+
+        cssp_records, cssp_warnings = self._fetch_cssp_purchase_query(status=status, limit=limit)
+        warnings.extend(cssp_warnings)
+        if cssp_records:
+            return cssp_records[:limit] if limit is not None else cssp_records, warnings, errors
 
         use_legacy_api = os.getenv("MOS_PORTAL_USE_LEGACY_API", "false").strip().lower() in {"1", "true", "yes", "on"}
         if not use_legacy_api:
@@ -154,6 +161,40 @@ class MosPortalApiClient:
 
         return retry_call(_call)
 
+    def _fetch_cssp_purchase_query(self, status: str, limit: int | None) -> tuple[list[dict[str, Any]], list[str]]:
+        warnings: list[str] = []
+        safe_limit = max(1, min(limit or 20, 100))
+        fetch_size = max(50, min(safe_limit * 20, 500))
+
+        query_dto = {
+            "page": 1,
+            "size": fetch_size,
+            "stateName": status,
+        }
+        url = "https://old.zakupki.mos.ru/api/Cssp/Purchase/Query"
+
+        try:
+            payload = self._request_json("GET", url, params={"queryDto": json.dumps(query_dto, ensure_ascii=False)})
+            records = _extract_records(payload)
+            normalized: list[dict[str, Any]] = []
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                normalized.append(_normalize_cssp_record(record))
+
+            filtered = [row for row in normalized if row.get("externalId") and _is_likely_goods_title(str(row.get("title") or ""))]
+            if not filtered:
+                filtered = [row for row in normalized if row.get("externalId")]
+
+            if filtered:
+                connectors_logger.info("mos_portal cssp query success | records=%s", len(filtered))
+            else:
+                warnings.append("mos_portal cssp query returned 0 normalized records")
+            return filtered[:safe_limit], warnings
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"mos_portal cssp query failed: {exc}")
+            return [], warnings
+
     @staticmethod
     def _build_url(base_url: str, path: str) -> str:
         if base_url.endswith("/"):
@@ -161,6 +202,83 @@ class MosPortalApiClient:
         else:
             base = f"{base_url}/"
         return urljoin(base, path.lstrip("/"))
+
+
+def _normalize_cssp_record(raw: dict[str, Any]) -> dict[str, Any]:
+    external_id = _pick_first(raw, ["number", "needId", "auctionId", "id", "externalNumber"]) or ""
+    name = _pick_first(raw, ["name", "title", "purchaseName", "subject"]) or external_id
+    url = _pick_first(raw, ["externalUrl", "url", "href"])
+    if not url:
+        if raw.get("auctionId"):
+            url = f"https://zakupki.mos.ru/auction/{raw.get('auctionId')}"
+        elif raw.get("needId"):
+            url = f"https://zakupki.mos.ru/purchase/{raw.get('needId')}"
+        else:
+            url = f"https://zakupki.mos.ru/purchase/{external_id}"
+
+    customer_name = _pick_first(raw, ["customerName", "customer", "organizationName", "buyerName"])
+    if not customer_name:
+        customers = raw.get("customers")
+        if isinstance(customers, list) and customers:
+            first = customers[0]
+            if isinstance(first, dict):
+                customer_name = _pick_first(first, ["name", "shortName", "fullName"])
+            elif isinstance(first, str):
+                customer_name = first.strip() or None
+
+    normalized = dict(raw)
+    normalized["externalId"] = str(external_id)
+    normalized["id"] = str(external_id)
+    normalized["number"] = str(external_id)
+    normalized["title"] = str(name)
+    normalized["name"] = str(name)
+    normalized["url"] = str(url)
+    normalized["statusName"] = _pick_first(raw, ["stateName", "statusName", "status", "state"])
+    normalized["stateName"] = _pick_first(raw, ["stateName", "statusName", "status", "state"])
+    normalized["regionName"] = _pick_first(raw, ["regionName", "region", "deliveryRegion"])
+    normalized["customerName"] = customer_name
+    normalized["maxTotalPrice"] = raw.get("startPrice") or raw.get("sum") or raw.get("nmc")
+    normalized["startPrice"] = raw.get("startPrice") or raw.get("sum") or raw.get("nmc")
+    normalized["endDate"] = _pick_first(raw, ["endDate", "submissionDeadline", "deadline", "bidsEndDate"])
+    if not isinstance(normalized.get("items"), list) or not normalized.get("items"):
+        normalized["items"] = [
+            {
+                "name": str(name),
+                "quantity": 1,
+                "unit": "шт",
+                "maxTotalPrice": normalized.get("maxTotalPrice"),
+            }
+        ]
+    return normalized
+
+
+def _is_likely_goods_title(title: str) -> bool:
+    text = title.lower()
+    goods_markers = (
+        "поставка",
+        "товар",
+        "оборудован",
+        "издел",
+        "комплект",
+        "картридж",
+        "бумаг",
+        "мебел",
+        "техник",
+        "запчаст",
+        "поставка и",
+    )
+    service_markers = (
+        "оказание услуг",
+        "услуг",
+        "работ",
+        "ремонт",
+        "обучени",
+        "обслуживани",
+        "аренд",
+    )
+    if any(marker in text for marker in service_markers) and not any(marker in text for marker in goods_markers):
+        return False
+    return any(marker in text for marker in goods_markers)
 
 
 def _candidate_list_requests(status: str, limit: int | None) -> list[dict[str, Any]]:

@@ -7,6 +7,13 @@ from urllib.parse import urlparse
 
 import requests
 
+
+def _requests_get_without_env_proxy(*args: Any, **kwargs: Any) -> requests.Response:
+    # Ignore ambient *_PROXY env vars; routing is controlled only via ProxyRouter.
+    with requests.Session() as session:
+        session.trust_env = False
+        return session.get(*args, **kwargs)
+
 from app.config import Settings, get_settings
 from app.utils.logging import get_file_logger
 from app.utils.proxy import ProxyRouter
@@ -158,7 +165,7 @@ class MosPortalBrowserFallback:
         for list_url in list_urls:
             proxies = self.proxy_router.requests_proxies_for(list_url)
             try:
-                response = requests.get(
+                response = _requests_get_without_env_proxy(
                     list_url,
                     headers={"User-Agent": self.settings.connector_user_agent},
                     timeout=self.settings.connector_request_timeout_seconds,
