@@ -40,6 +40,7 @@ from app.services.item_attribute_service import ItemAttributeService
 from app.services.job_service import create_job_run, mark_failed, mark_running, mark_success
 from app.services.offer_template_service import export_offer_template
 from app.services.rematch_service import rematch_offers
+from app.services.small_tender_report_service import build_single_file_manifest, generate_small_tender_report
 from app.services.supplier_service import SupplierService
 from app.services.task_runner import run_calculate_task, run_evaluate_task, run_export_excel_task, run_import_offers_task, run_parse_task, run_search_prices_task
 from app.services.user_service import UserService
@@ -495,6 +496,45 @@ def export_excel_command(output_path: Path = Path("exports/tender_small_volume_e
         job_id, job_status = job.id, job.status
     typer.echo(f"JobRun: {job_id} ({job_status})")
     typer.echo(f"Excel exported: {result}")
+
+
+@cli.command("small-tender-manifest")
+def small_tender_manifest_command(
+    source_csv: Path = typer.Option(..., "--source-csv", exists=True, dir_okay=False),
+    attachment_path: Path = typer.Option(..., "--attachment-path", dir_okay=False),
+    out_manifest_csv: Path = typer.Option(Path("exports/small_tender_attachments_manifest.csv"), "--out-manifest-csv"),
+) -> None:
+    output = build_single_file_manifest(
+        source_csv=source_csv,
+        attachment_path=attachment_path,
+        out_manifest_csv=out_manifest_csv,
+    )
+    typer.echo(f"Manifest generated: {output}")
+
+
+@cli.command("small-tender-report")
+def small_tender_report_command(
+    market_csv: Path = typer.Option(..., "--market-csv", exists=True, dir_okay=False),
+    tender_ref_csv: Path = typer.Option(..., "--tender-ref-csv", exists=True, dir_okay=False),
+    out_csv: Path = typer.Option(Path("exports/small_tender_report.csv"), "--out-csv"),
+    out_xlsx: Path = typer.Option(Path("exports/small_tender_report.xlsx"), "--out-xlsx"),
+    diagnostics_csv: Path = typer.Option(Path("exports/small_tender_report_diagnostics.csv"), "--diagnostics-csv"),
+    attachments_manifest_csv: Path | None = typer.Option(None, "--attachments-manifest-csv", dir_okay=False),
+) -> None:
+    summary = generate_small_tender_report(
+        market_csv=market_csv,
+        tender_ref_csv=tender_ref_csv,
+        out_csv=out_csv,
+        out_xlsx=out_xlsx,
+        diagnostics_csv=diagnostics_csv,
+        attachments_manifest_csv=attachments_manifest_csv,
+    )
+    typer.echo("Small tender report generated")
+    typer.echo(f"out_csv: {out_csv}")
+    typer.echo(f"out_xlsx: {out_xlsx}")
+    typer.echo(f"diagnostics_csv: {diagnostics_csv}")
+    for key, value in summary.items():
+        typer.echo(f"{key}: {value}")
 
 
 @cli.command("validate-export")
