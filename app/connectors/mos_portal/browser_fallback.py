@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 from urllib.parse import urljoin
+from urllib.parse import urlparse
 
 import requests
 
@@ -47,6 +48,7 @@ class MosPortalBrowserFallback:
         ]
         proxy_cfg = self.proxy_router.decide(target_urls[0])
         collected: list[dict[str, Any]] = []
+        captured_payloads: list[Any] = []
 
         try:
             with sync_playwright() as playwright:
@@ -61,14 +63,32 @@ class MosPortalBrowserFallback:
                 context = browser.new_context(**context_kwargs)
                 page = context.new_page()
 
-                for target_url in target_urls:
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=int(self.settings.connector_request_timeout_seconds * 1000))
+                def on_response(response: Any) -> None:
+                    try:
+                        if not _is_candidate_json_response(response.url, response.request.resource_type):
+                            return
+                        payload = response.json()
+                        captured_payloads.append(payload)
+                    except BaseException:
+                        return
 
-                    page.wait_for_timeout(2000)
-                    links = page.eval_on_selector_all(
-                        "a[href*='/auction/'], a[href*='/purchase/']",
-                        "elements => elements.map(e => ({href: e.href, text: (e.innerText || '').trim()}))",
-                    )
+                page.on("response", on_response)
+
+                for target_url in target_urls:
+                    try:
+                        page.goto(target_url, wait_until="domcontentloaded", timeout=self.settings.playwright_timeout_ms)
+                    except Exception as page_exc:  # noqa: BLE001
+                        warnings.append(f"playwright page load failed for {target_url}: {page_exc}")
+                        continue
+
+                    page.wait_for_timeout(3000)
+                    try:
+                        links = page.eval_on_selector_all(
+                            "a[href*='/auction/'], a[href*='/purchase/']",
+                            "elements => elements.map(e => ({href: e.href, text: (e.innerText || '').trim()}))",
+                        )
+                    except Exception:
+                        links = []
 
                     for link in links:
                         href = (link or {}).get("href")
@@ -103,12 +123,28 @@ class MosPortalBrowserFallback:
                             }
                         )
 
+                    page.wait_for_timeout(1500)
+
                 context.close()
                 browser.close()
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"playwright fallback failed: {exc}")
             connectors_logger.warning("mos_portal playwright fallback failed: %s", exc)
             return []
+
+        network_cards = _records_from_captured_payloads(captured_payloads, status=status)
+        if network_cards:
+            connectors_logger.info(
+                "mos_portal playwright network capture success | payloads=%s cards=%s",
+                len(captured_payloads),
+                len(network_cards),
+            )
+            collected.extend(network_cards)
+        else:
+            connectors_logger.info(
+                "mos_portal playwright network capture empty | payloads=%s",
+                len(captured_payloads),
+            )
 
         unique = _deduplicate_by_external_id(collected)
         return unique[:limit] if limit is not None else unique
@@ -179,3 +215,83 @@ def _deduplicate_by_external_id(records: list[dict[str, Any]]) -> list[dict[str,
         seen.add(external_id)
         unique.append(record)
     return unique
+
+
+def _is_candidate_json_response(url: str, resource_type: str | None) -> bool:
+    url_lower = (url or "").lower()
+    if not url_lower:
+        return False
+    if resource_type and resource_type not in {"xhr", "fetch"}:
+        return False
+    if "zakupki.mos.ru" not in url_lower:
+        return False
+
+    markers = ("/newapi/", "auction", "purchase", "tradingsession", "search", "filter")
+    return any(marker in url_lower for marker in markers)
+
+
+def _records_from_captured_payloads(payloads: list[Any], status: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for payload in payloads:
+        for row in _flatten_record_candidates(payload):
+            normalized = _normalize_network_record(row, status=status)
+            if normalized is not None:
+                records.append(normalized)
+    return _deduplicate_by_external_id(records)
+
+
+def _flatten_record_candidates(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if not isinstance(payload, dict):
+        return []
+
+    for key in ("items", "rows", "content", "results", "data", "result", "auctions", "purchases", "sessions", "tradingSessions"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            nested = _flatten_record_candidates(value)
+            if nested:
+                return nested
+
+    ext = _pick_string(payload, ["id", "externalId", "auctionId", "purchaseNumber", "number", "sessionId"])
+    if ext:
+        return [payload]
+    return []
+
+
+def _normalize_network_record(raw: dict[str, Any], status: str) -> dict[str, Any] | None:
+    external_id = _pick_string(raw, ["externalId", "id", "auctionId", "purchaseNumber", "number", "sessionId"])
+    if not external_id:
+        return None
+
+    url = _pick_string(raw, ["url", "href", "link"])
+    if not url:
+        url = f"https://zakupki.mos.ru/auction/{external_id}"
+    elif url.startswith("/"):
+        url = urljoin("https://zakupki.mos.ru", url)
+    elif not urlparse(url).scheme:
+        url = urljoin("https://zakupki.mos.ru", f"/{url.lstrip('/')}")
+
+    title = _pick_string(raw, ["title", "name", "auctionName", "purchaseName", "subject", "displayName"]) or f"Закупка {external_id}"
+
+    card: dict[str, Any] = dict(raw)
+    card["externalId"] = external_id
+    card["url"] = url
+    card["title"] = title
+    card["status"] = _pick_string(raw, ["status", "statusName", "state", "sessionState"]) or status
+    if "items" not in card and "positions" in card and isinstance(card["positions"], list):
+        card["items"] = card["positions"]
+    return card
+
+
+def _pick_string(raw: dict[str, Any], keys: list[str]) -> str | None:
+    for key in keys:
+        value = raw.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return None

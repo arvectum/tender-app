@@ -1425,10 +1425,10 @@ def _run_real_source_probe(source: str, status: str, limit: int) -> dict[str, An
             api_ok = True
         else:
             fallback_records, fb_warnings, fb_errors = MosPortalBrowserFallback().fetch_cards(status=status, limit=limit)
+            browser_fallback_used = True
             warnings.extend(fb_warnings)
             errors.extend(fb_errors)
             raw_records = fallback_records
-            browser_fallback_used = bool(raw_records)
 
         for raw in raw_records[:limit]:
             try:
