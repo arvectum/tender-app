@@ -73,10 +73,16 @@ def generate_small_tender_report(
         title_tokens = _tokenize(offer_title)
         all_offer_tokens = item_tokens | title_tokens
 
-        strict_full_match = bool(tz_tokens) and tz_tokens.issubset(all_offer_tokens)
+        strict_full_match = _is_strict_attribute_match(tz_text=tz_text, offer_text=f"{item_name} {offer_title}") or (
+            bool(tz_tokens) and tz_tokens.issubset(all_offer_tokens)
+        )
         overlap = (len(tz_tokens & all_offer_tokens) / len(tz_tokens)) if tz_tokens else 0.0
+        fallback_non_product_match = False
+        if not strict_full_match and _is_non_product_tz_text(tz_text):
+            fallback_non_product_match = bool(item_tokens or title_tokens)
+
         match_type = "none"
-        if strict_full_match:
+        if strict_full_match or fallback_non_product_match:
             match_type = "full"
         elif overlap >= 0.5:
             match_type = "partial"
@@ -253,6 +259,99 @@ def _tokenize(text: str) -> set[str]:
     prepared = text.lower().replace("ё", "е")
     prepared = re.sub(r"[^a-zа-я0-9]+", " ", prepared, flags=re.IGNORECASE)
     return {token for token in prepared.split() if len(token) >= 4}
+
+
+def _normalize_ru_text(text: str) -> str:
+    prepared = text.lower().replace("ё", "е")
+    prepared = prepared.replace("\xa0", " ")
+    prepared = re.sub(r"[^a-zа-я0-9]+", " ", prepared, flags=re.IGNORECASE)
+    prepared = re.sub(r"\s+", " ", prepared)
+    return prepared.strip()
+
+
+def _extract_model_tokens(text: str) -> set[str]:
+    prepared = re.sub(r"[^a-zа-я0-9\-/]+", " ", text.lower().replace("ё", "е"), flags=re.IGNORECASE)
+    candidates = prepared.split()
+    return {
+        token
+        for token in candidates
+        if len(token) >= 4 and any(ch.isalpha() for ch in token) and any(ch.isdigit() for ch in token)
+    }
+
+
+def _extract_numbers(text: str) -> set[str]:
+    return set(re.findall(r"\d{2,}", text))
+
+
+def _extract_units(text: str) -> set[str]:
+    units_map = {
+        "шт": "шт",
+        "штук": "шт",
+        "штука": "шт",
+        "штуки": "шт",
+        "ед": "шт",
+        "pcs": "шт",
+        "pc": "шт",
+        "компл": "компл",
+        "комплект": "компл",
+        "комплекта": "компл",
+    }
+    tokens = _normalize_ru_text(text).split()
+    return {units_map[t] for t in tokens if t in units_map}
+
+
+def _is_strict_attribute_match(*, tz_text: str, offer_text: str) -> bool:
+    tz_norm = _normalize_ru_text(tz_text)
+    offer_norm = _normalize_ru_text(offer_text)
+    if not tz_norm or not offer_norm:
+        return False
+
+    offer_compact = offer_text.lower().replace("ё", "е").replace(" ", "")
+    tz_models = _extract_model_tokens(tz_text)
+    if tz_models and not all(model in offer_compact for model in tz_models):
+        return False
+
+    tz_numbers = _extract_numbers(tz_norm)
+    offer_numbers = _extract_numbers(offer_norm)
+    long_tz_numbers = {n for n in tz_numbers if len(n) >= 5}
+    if long_tz_numbers and not long_tz_numbers.issubset(offer_numbers):
+        return False
+
+    tz_units = _extract_units(tz_norm)
+    offer_units = _extract_units(offer_norm)
+    if tz_units and offer_units and not tz_units.issubset(offer_units):
+        return False
+
+    return bool(tz_models or long_tz_numbers or (tz_units and tz_numbers))
+
+
+def _is_non_product_tz_text(text: str) -> bool:
+    norm = _normalize_ru_text(text)
+    if not norm:
+        return False
+
+    tokens = norm.split()
+    if len(tokens) < 5:
+        return False
+
+    if _extract_model_tokens(norm):
+        return False
+    if any(len(n) >= 5 for n in _extract_numbers(norm)):
+        return False
+
+    noise_markers = {
+        "инструкция",
+        "регистрация",
+        "пользователя",
+        "организации",
+        "электронной",
+        "подписи",
+        "требования",
+        "порядок",
+        "документооборот",
+    }
+    overlap = sum(1 for t in tokens if t in noise_markers)
+    return overlap >= 2
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
