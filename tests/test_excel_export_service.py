@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from app.services.excel_export_service import _resolve_tech_spec_confirmation_status
+from app.services.excel_export_service import _is_real_source_url, _resolve_tech_spec_confirmation_status
 
 
 def test_tech_spec_confirmation_status_green_for_strict_full_match() -> None:
@@ -73,3 +73,15 @@ def test_tech_spec_confirmation_status_reject_when_not_relevant() -> None:
     )
 
     assert status == "reject"
+
+
+def test_is_real_source_url_rejects_placeholder_and_empty() -> None:
+    assert _is_real_source_url(None) is False
+    assert _is_real_source_url("") is False
+    assert _is_real_source_url("https://example.com/offer") is False
+    assert _is_real_source_url("https://sub.example.com/offer") is False
+
+
+def test_is_real_source_url_accepts_real_http_urls() -> None:
+    assert _is_real_source_url("https://zakupki.mos.ru/purchase/123") is True
+    assert _is_real_source_url("http://supplier.ru/item/1") is True

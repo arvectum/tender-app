@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlparse
 
 from openpyxl import Workbook
 from openpyxl.formatting.rule import FormulaRule
@@ -276,6 +277,7 @@ def export_to_excel(session: Session, output_path: Path) -> Path:
             "available_quantity",
             "delivery_price",
             "effective_unit_price",
+            "margin_percent",
             "relevance_score",
             "is_relevant",
             "supplier_status",
@@ -314,7 +316,11 @@ def export_to_excel(session: Session, output_path: Path) -> Path:
             match_score=offer.match_score,
             margin_percent=margin_percent,
         )
-        if tech_spec_confirmation_status is None:
+        if tech_spec_confirmation_status not in {"green", "yellow"}:
+            continue
+        if not _is_real_source_url(offer.offer_url):
+            continue
+        if margin_percent is None:
             continue
 
         usage = usage_by_offer_id.get(offer.id)
@@ -331,6 +337,7 @@ def export_to_excel(session: Session, output_path: Path) -> Path:
                 offer.available_quantity,
                 float(offer.delivery_price) if offer.delivery_price is not None else None,
                 float(offer.effective_unit_price) if offer.effective_unit_price is not None else None,
+                float(margin_percent),
                 float(offer.relevance_score) if offer.relevance_score is not None else None,
                 bool(offer.is_relevant),
                 offer.supplier_status,
@@ -621,6 +628,24 @@ def _resolve_margin_percent(calc: PurchaseCalculation | None) -> Decimal | None:
     if calc.margin_after_tax_percent is not None:
         return Decimal(calc.margin_after_tax_percent)
     return None
+
+
+def _is_real_source_url(url: str | None) -> bool:
+    if not url:
+        return False
+    candidate = str(url).strip()
+    if not candidate:
+        return False
+
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"http", "https"}:
+        return False
+    hostname = (parsed.hostname or "").lower()
+    if not hostname:
+        return False
+    if hostname == "example.com" or hostname.endswith(".example.com"):
+        return False
+    return True
 
 
 def _resolve_tech_spec_confirmation_status(
