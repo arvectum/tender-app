@@ -235,3 +235,61 @@ def test_generate_small_tender_report_fallback_when_tz_is_non_product_noise(tmp_
 
     assert rows[0]["tz_match_type"] == "full"
     assert rows[0]["decision_status"] == "green"
+
+
+def test_generate_small_tender_report_uses_alternative_price_fields_for_margin(tmp_path: Path) -> None:
+    market_csv = tmp_path / "market.csv"
+    ref_csv = tmp_path / "tender_ref.csv"
+    manifest_csv = tmp_path / "manifest.csv"
+    tz_txt = tmp_path / "tz.txt"
+
+    _write_csv(
+        market_csv,
+        [
+            {
+                "purchase_external_id": "P-PRICE",
+                "item_name": "Коммутатор Huawei",
+                "offer_title": "Huawei S5735S-24T4S",
+                "unit_price": "NaN",
+                "offered_unit_price": "1 500,50",
+            }
+        ],
+    )
+    _write_csv(
+        ref_csv,
+        [
+            {
+                "purchase_external_id": "P-PRICE",
+                "tender_unit_price_ref": "2 000,00",
+                "unit_price": "",
+            }
+        ],
+    )
+    tz_txt.write_text("Huawei S5735S-24T4S", encoding="utf-8")
+    _write_csv(
+        manifest_csv,
+        [{"purchase_external_id": "P-PRICE", "attachment_path": str(tz_txt)}],
+    )
+
+    out_csv = tmp_path / "report.csv"
+    out_xlsx = tmp_path / "report.xlsx"
+    diag_csv = tmp_path / "diag.csv"
+
+    summary = generate_small_tender_report(
+        market_csv=market_csv,
+        tender_ref_csv=ref_csv,
+        out_csv=out_csv,
+        out_xlsx=out_xlsx,
+        diagnostics_csv=diag_csv,
+        attachments_manifest_csv=manifest_csv,
+    )
+
+    assert summary["report_rows"] == 1
+    with out_csv.open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert rows[0]["tender_unit_price_ref"] == "2000.0"
+    assert rows[0]["market_unit_price"] == "1500.5"
+    assert rows[0]["margin_pct"] == "24.98"
+    assert rows[0]["decision_reason"] != "missing_price_for_margin"
+    assert rows[0]["decision_status"] == "green"

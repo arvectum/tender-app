@@ -36,7 +36,18 @@ def generate_small_tender_report(
     ref_price_by_purchase: dict[str, float] = {}
     for row in ref_rows:
         pid = str(row.get("purchase_external_id", "")).strip()
-        price = _to_float(row.get("unit_price"))
+        price = _pick_first_price(
+            row,
+            [
+                "tender_unit_price_ref",
+                "unit_price",
+                "offered_unit_price",
+                "market_price",
+                "min_price",
+                "final_price",
+                "price",
+            ],
+        )
         if not pid or price is None:
             continue
         prev = ref_price_by_purchase.get(pid)
@@ -55,7 +66,20 @@ def generate_small_tender_report(
         purchase_id = str(row.get("purchase_external_id", "")).strip()
         item_name = str(row.get("item_name", "")).strip()
         offer_title = str(row.get("offer_title", "")).strip()
-        market_unit_price = _to_float(row.get("unit_price") or row.get("found_offer_unit_price") or row.get("effective_unit_price"))
+        market_unit_price = _pick_first_price(
+            row,
+            [
+                "unit_price",
+                "offered_unit_price",
+                "market_unit_price",
+                "market_price",
+                "found_offer_unit_price",
+                "effective_unit_price",
+                "min_price",
+                "final_price",
+                "price",
+            ],
+        )
 
         extraction = extraction_by_purchase.get(purchase_id)
         if extraction is None:
@@ -399,6 +423,14 @@ def _to_float(value: object) -> float | None:
         return float(match.group(0))
     except ValueError:
         return None
+
+
+def _pick_first_price(row: dict[str, object], fields: list[str]) -> float | None:
+    for field in fields:
+        price = _to_float(row.get(field))
+        if price is not None:
+            return price
+    return None
 
 
 def build_single_file_manifest(*, source_csv: Path, attachment_path: Path, out_manifest_csv: Path) -> Path:
