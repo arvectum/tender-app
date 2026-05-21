@@ -243,7 +243,7 @@ def build_position_hash(item: ParsedPurchaseItem) -> str:
 
     payload = "|".join(
         [
-            item.name.strip().lower(),
+            (item.name or "").strip().lower(),
             str(item.quantity),
             str(item.max_total_price) if item.max_total_price is not None else "",
         ]

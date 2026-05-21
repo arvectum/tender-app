@@ -55,7 +55,7 @@ def filter_purchase(
     required_status: str = "Прием предложений",
 ) -> FilterDecision:
     status_value = (purchase.status or "").strip().lower()
-    required_status_value = required_status.strip().lower()
+    required_status_value = (required_status or "").strip().lower()
     if required_status_value and status_value != required_status_value:
         return FilterDecision(include=False, reason="status_mismatch")
 

@@ -135,7 +135,7 @@ def _parse_datetime(value: str | None) -> datetime | None:
     except ValueError:
         pass
 
-    for fmt in ("%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S"):
+    for fmt in ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M", "%d.%m.%Y", "%Y-%m-%d %H:%M:%S"):
         try:
             return datetime.strptime(text, fmt)
         except ValueError:

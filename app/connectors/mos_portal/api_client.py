@@ -182,7 +182,16 @@ class MosPortalApiClient:
                     continue
                 normalized.append(_normalize_cssp_record(record))
 
-            filtered = [row for row in normalized if row.get("externalId") and _is_likely_goods_title(str(row.get("title") or ""))]
+            with_price = [
+                row for row in normalized
+                if row.get("externalId") and _pick_positive_nmc(row) is not None and _is_likely_goods_title(str(row.get("title") or ""))
+            ]
+            if not with_price:
+                with_price = [row for row in normalized if row.get("externalId") and _pick_positive_nmc(row) is not None]
+
+            filtered = with_price
+            if not filtered:
+                filtered = [row for row in normalized if row.get("externalId") and _is_likely_goods_title(str(row.get("title") or ""))]
             if not filtered:
                 filtered = [row for row in normalized if row.get("externalId")]
 
@@ -237,9 +246,12 @@ def _normalize_cssp_record(raw: dict[str, Any]) -> dict[str, Any]:
     normalized["stateName"] = _pick_first(raw, ["stateName", "statusName", "status", "state"])
     normalized["regionName"] = _pick_first(raw, ["regionName", "region", "deliveryRegion"])
     normalized["customerName"] = customer_name
-    normalized["maxTotalPrice"] = raw.get("startPrice") or raw.get("sum") or raw.get("nmc")
-    normalized["startPrice"] = raw.get("startPrice") or raw.get("sum") or raw.get("nmc")
-    normalized["endDate"] = _pick_first(raw, ["endDate", "submissionDeadline", "deadline", "bidsEndDate"])
+    normalized_price = _pick_positive_nmc(raw)
+    normalized["maxTotalPrice"] = normalized_price
+    normalized["startPrice"] = normalized_price
+    deadline_value = _pick_first(raw, ["endDate", "submissionDeadline", "deadline", "bidsEndDate", "beginDate"])
+    normalized["endDate"] = deadline_value
+    normalized["submissionDeadline"] = deadline_value
     if not isinstance(normalized.get("items"), list) or not normalized.get("items"):
         normalized["items"] = [
             {
@@ -247,6 +259,7 @@ def _normalize_cssp_record(raw: dict[str, Any]) -> dict[str, Any]:
                 "quantity": 1,
                 "unit": "шт",
                 "maxTotalPrice": normalized.get("maxTotalPrice"),
+                "unitPrice": normalized.get("maxTotalPrice"),
             }
         ]
     return normalized
@@ -279,6 +292,20 @@ def _is_likely_goods_title(title: str) -> bool:
     if any(marker in text for marker in service_markers) and not any(marker in text for marker in goods_markers):
         return False
     return any(marker in text for marker in goods_markers)
+
+
+def _pick_positive_nmc(raw: dict[str, Any]) -> Any:
+    for key in ("startPrice", "maxTotalPrice", "sum", "nmc"):
+        value = raw.get(key)
+        if value is None:
+            continue
+        try:
+            numeric = float(str(value).replace("\u00a0", "").replace(" ", "").replace(",", "."))
+        except (TypeError, ValueError):
+            continue
+        if numeric > 0:
+            return value
+    return None
 
 
 def _candidate_list_requests(status: str, limit: int | None) -> list[dict[str, Any]]:
