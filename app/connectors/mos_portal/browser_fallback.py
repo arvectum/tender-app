@@ -283,7 +283,57 @@ def _normalize_network_record(raw: dict[str, Any], status: str) -> dict[str, Any
     card["status"] = _pick_string(raw, ["status", "statusName", "state", "sessionState"]) or status
     if "items" not in card and "positions" in card and isinstance(card["positions"], list):
         card["items"] = card["positions"]
+    if not _is_procurement_record(card):
+        return None
     return card
+
+
+def _is_procurement_record(card: dict[str, Any]) -> bool:
+    title = str(card.get("title") or "").strip()
+    title_lower = title.lower()
+    if not title:
+        return False
+
+    # Явно отсекаем сервисный/контентный мусор из network-capture.
+    blocked_title_markers = (
+        "уважаемые пользователи",
+        "чат взаимодействия",
+        "новост",
+        "инструкц",
+        "поддержк",
+        "техподдержк",
+        "вебинар",
+    )
+    if any(marker in title_lower for marker in blocked_title_markers):
+        return False
+
+    external_id = str(card.get("externalId") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{3,}", external_id):
+        return False
+
+    url = str(card.get("url") or "").strip().lower()
+    if not url or not any(path in url for path in ("/auction/", "/purchase/")):
+        return False
+
+    # Требуем набор procurement-признаков: минимум 2, где один должен быть "сильным".
+    has_status = bool(_pick_string(card, ["status", "statusName", "state", "sessionState"]))
+    has_amount = any(
+        card.get(key) not in (None, "", 0, "0")
+        for key in ("startPrice", "sum", "nmc", "initialPrice", "maxTotalPrice")
+    )
+    has_deadline = bool(_pick_string(card, ["submissionDeadline", "endDate", "bidsEndDate", "deadline"]))
+    has_customer = bool(_pick_string(card, ["customerName", "customer", "organizationName", "buyerName"]))
+    has_items = isinstance(card.get("items"), list) and len(card.get("items") or []) > 0
+
+    strong_signals = [has_amount, has_deadline, has_items]
+    weak_signals = [has_status, has_customer]
+
+    if not any(strong_signals):
+        return False
+    if sum(1 for signal in (*strong_signals, *weak_signals) if signal) < 2:
+        return False
+
+    return True
 
 
 def _pick_string(raw: dict[str, Any], keys: list[str]) -> str | None:

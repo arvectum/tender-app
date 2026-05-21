@@ -32,8 +32,20 @@ def test_records_from_captured_payloads_deduplicates_and_keeps_url() -> None:
     payloads = [
         {
             "result": [
-                {"auctionId": "A-1", "auctionName": "Лот 1", "href": "/auction/A-1"},
-                {"auctionId": "A-1", "auctionName": "Лот 1 дубликат", "href": "/auction/A-1"},
+                {
+                    "auctionId": "A-1",
+                    "auctionName": "Лот 1",
+                    "href": "/auction/A-1",
+                    "statusName": "Прием предложений",
+                    "sum": 100000,
+                },
+                {
+                    "auctionId": "A-1",
+                    "auctionName": "Лот 1 дубликат",
+                    "href": "/auction/A-1",
+                    "statusName": "Прием предложений",
+                    "sum": 100000,
+                },
             ]
         }
     ]
@@ -43,3 +55,38 @@ def test_records_from_captured_payloads_deduplicates_and_keeps_url() -> None:
     assert len(records) == 1
     assert records[0]["externalId"] == "A-1"
     assert records[0]["url"] == "https://zakupki.mos.ru/auction/A-1"
+
+
+def test_records_from_captured_payloads_filters_non_procurement_noise() -> None:
+    payloads = [
+        {
+            "data": {
+                "items": [
+                    {
+                        "id": "NEWS-1",
+                        "name": "Уважаемые пользователи!",
+                        "url": "https://zakupki.mos.ru/auction/NEWS-1",
+                        "statusName": "Опубликовано",
+                    },
+                    {
+                        "id": "CHAT-1",
+                        "name": "Чат взаимодействия поставщика и заказчика",
+                        "url": "https://zakupki.mos.ru/auction/CHAT-1",
+                        "statusName": "Опубликовано",
+                    },
+                    {
+                        "id": "REAL-1",
+                        "name": "Поставка серверного оборудования",
+                        "url": "https://zakupki.mos.ru/auction/REAL-1",
+                        "statusName": "Прием предложений",
+                        "sum": 2500000,
+                    },
+                ]
+            }
+        }
+    ]
+
+    records = _records_from_captured_payloads(payloads, status="Прием предложений")
+
+    assert len(records) == 1
+    assert records[0]["externalId"] == "REAL-1"
