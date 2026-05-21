@@ -292,10 +292,31 @@ def export_to_excel(session: Session, output_path: Path) -> Path:
             "taken_quantity",
             "offer_url",
             "risk_flags",
+            "tech_spec_confirmation_status",
         ]
     )
 
+    purchase_by_external_id = {purchase.external_id: purchase for purchase in purchases}
+
     for offer in offers:
+        purchase_id = offer.purchase_id
+        if purchase_id is None and offer.purchase_external_id:
+            purchase = purchase_by_external_id.get(offer.purchase_external_id)
+            purchase_id = purchase.id if purchase is not None else None
+        calc = calc_by_purchase_id.get(purchase_id) if purchase_id is not None else None
+        margin_percent = _resolve_margin_percent(calc)
+        tech_spec_confirmation_status = _resolve_tech_spec_confirmation_status(
+            is_relevant=offer.is_relevant,
+            hard_reject_reason=offer.hard_reject_reason,
+            matched_fields=offer.matched_fields_json,
+            mismatched_fields=offer.mismatched_fields_json,
+            relevance_score=offer.relevance_score,
+            match_score=offer.match_score,
+            margin_percent=margin_percent,
+        )
+        if tech_spec_confirmation_status is None:
+            continue
+
         usage = usage_by_offer_id.get(offer.id)
         offers_ws.append(
             [
@@ -326,6 +347,7 @@ def export_to_excel(session: Session, output_path: Path) -> Path:
                 usage.taken_quantity if usage else None,
                 offer.offer_url,
                 ",".join(offer.risk_flags or []),
+                tech_spec_confirmation_status,
             ]
         )
 
@@ -588,6 +610,53 @@ def _decision_explanation_summary(score: PurchaseDecisionScore | None, calc: Pur
         return str(score.explanation_json.get("final_reason"))
     if calc:
         return calc.explanation_summary
+    return None
+
+
+def _resolve_margin_percent(calc: PurchaseCalculation | None) -> Decimal | None:
+    if calc is None:
+        return None
+    if calc.margin_percent is not None:
+        return Decimal(calc.margin_percent)
+    if calc.margin_after_tax_percent is not None:
+        return Decimal(calc.margin_after_tax_percent)
+    return None
+
+
+def _resolve_tech_spec_confirmation_status(
+    *,
+    is_relevant: bool | None,
+    hard_reject_reason: str | None,
+    matched_fields: list[str] | None,
+    mismatched_fields: list[str] | None,
+    relevance_score: Decimal | float | None,
+    match_score: Decimal | float | None,
+    margin_percent: Decimal | float | None,
+) -> str | None:
+    if not is_relevant or hard_reject_reason:
+        return None
+
+    matched = bool(matched_fields or [])
+    mismatched = bool(mismatched_fields or [])
+    relevance_value = Decimal(str(relevance_score)) if relevance_score is not None else None
+    match_value = Decimal(str(match_score)) if match_score is not None else None
+    margin_value = Decimal(str(margin_percent)) if margin_percent is not None else None
+
+    is_full_match = matched and not mismatched and (
+        (relevance_value is not None and relevance_value >= Decimal("0.99"))
+        or (match_value is not None and match_value >= Decimal("0.99"))
+    )
+    if is_full_match:
+        return "green"
+
+    is_partial_match = matched and (
+        mismatched
+        or (relevance_value is not None and relevance_value > Decimal("0"))
+        or (match_value is not None and match_value > Decimal("0"))
+    )
+    if is_partial_match and margin_value is not None and margin_value <= Decimal("30"):
+        return "yellow"
+
     return None
 
 
