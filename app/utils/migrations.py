@@ -34,7 +34,9 @@ def database_backend(database_url: str) -> str:
 
 def migration_mode_for_settings(settings: Settings) -> str:
     backend = database_backend(settings.database_url)
-    if backend == "sqlite" and settings.app_mode in {"demo", "development"}:
+    # SQLite migrations in this project are not fully Alembic-safe (FK ALTER / drifted local DBs).
+    # Use model-driven bootstrap for SQLite in all app modes to keep local/prod-lite runs stable.
+    if backend == "sqlite":
         return SQLITE_DEMO_MIGRATION_MODE
     return ALEMBIC_MIGRATION_MODE
 

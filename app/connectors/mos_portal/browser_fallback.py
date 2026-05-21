@@ -41,8 +41,11 @@ class MosPortalBrowserFallback:
             warnings.append(f"playwright unavailable: {exc}")
             return []
 
-        target_url = f"{self.settings.mos_portal_base_url}/auction"
-        proxy_cfg = self.proxy_router.decide(target_url)
+        target_urls = [
+            f"{self.settings.mos_portal_base_url}/purchase",
+            f"{self.settings.mos_portal_base_url}/auction",
+        ]
+        proxy_cfg = self.proxy_router.decide(target_urls[0])
         collected: list[dict[str, Any]] = []
 
         try:
@@ -52,31 +55,53 @@ class MosPortalBrowserFallback:
                     launch_kwargs["proxy"] = {"server": proxy_cfg.proxy_url}
 
                 browser = playwright.chromium.launch(**launch_kwargs)
-                context = browser.new_context(user_agent=self.settings.connector_user_agent)
+                context_kwargs: dict[str, Any] = {"user_agent": self.settings.connector_user_agent}
+                if self.settings.mos_portal_storage_state.exists():
+                    context_kwargs["storage_state"] = str(self.settings.mos_portal_storage_state)
+                context = browser.new_context(**context_kwargs)
                 page = context.new_page()
-                page.goto(target_url, wait_until="domcontentloaded", timeout=int(self.settings.connector_request_timeout_seconds * 1000))
 
-                links = page.eval_on_selector_all(
-                    "a[href*='/auction/']",
-                    "elements => elements.map(e => ({href: e.href, text: (e.innerText || '').trim()}))",
-                )
+                for target_url in target_urls:
+                    page.goto(target_url, wait_until="domcontentloaded", timeout=int(self.settings.connector_request_timeout_seconds * 1000))
 
-                for link in links:
-                    href = (link or {}).get("href")
-                    if not href:
-                        continue
-                    ext = _extract_external_id_from_url(href)
-                    if not ext:
-                        continue
-                    collected.append(
-                        {
-                            "externalId": ext,
-                            "url": href,
-                            "title": ((link or {}).get("text") or f"Закупка {ext}").strip(),
-                            "status": status,
-                            "items": [],
-                        }
+                    page.wait_for_timeout(2000)
+                    links = page.eval_on_selector_all(
+                        "a[href*='/auction/'], a[href*='/purchase/']",
+                        "elements => elements.map(e => ({href: e.href, text: (e.innerText || '').trim()}))",
                     )
+
+                    for link in links:
+                        href = (link or {}).get("href")
+                        if not href:
+                            continue
+                        ext = _extract_external_id_from_url(href)
+                        if not ext:
+                            continue
+                        collected.append(
+                            {
+                                "externalId": ext,
+                                "url": href,
+                                "title": ((link or {}).get("text") or f"Закупка {ext}").strip(),
+                                "status": status,
+                                "items": [],
+                            }
+                        )
+
+                    html = page.content()
+                    for match in re.finditer(r'https?://[^"\'\s]+/(?:auction|purchase)/[A-Za-z0-9\-]+', html, flags=re.IGNORECASE):
+                        href = match.group(0)
+                        ext = _extract_external_id_from_url(href)
+                        if not ext:
+                            continue
+                        collected.append(
+                            {
+                                "externalId": ext,
+                                "url": href,
+                                "title": f"Закупка {ext}",
+                                "status": status,
+                                "items": [],
+                            }
+                        )
 
                 context.close()
                 browser.close()
@@ -89,23 +114,30 @@ class MosPortalBrowserFallback:
         return unique[:limit] if limit is not None else unique
 
     def _fetch_with_http(self, status: str, limit: int | None, warnings: list[str]) -> list[dict[str, Any]]:
-        list_url = f"{self.settings.mos_portal_base_url}/auction"
-        proxies = self.proxy_router.requests_proxies_for(list_url)
-        try:
-            response = requests.get(
-                list_url,
-                headers={"User-Agent": self.settings.connector_user_agent},
-                timeout=self.settings.connector_request_timeout_seconds,
-                proxies=proxies,
-            )
-            response.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"http fallback failed: {exc}")
-            return []
+        list_urls = [
+            f"{self.settings.mos_portal_base_url}/purchase",
+            f"{self.settings.mos_portal_base_url}/auction",
+        ]
+        hrefs: set[str] = set()
+        for list_url in list_urls:
+            proxies = self.proxy_router.requests_proxies_for(list_url)
+            try:
+                response = requests.get(
+                    list_url,
+                    headers={"User-Agent": self.settings.connector_user_agent},
+                    timeout=self.settings.connector_request_timeout_seconds,
+                    proxies=proxies,
+                )
+                response.raise_for_status()
+            except Exception as exc:  # noqa: BLE001
+                warnings.append(f"http fallback failed for {list_url}: {exc}")
+                continue
 
-        hrefs = set(re.findall(r'href=["\']([^"\']+/auction/[^"\']+)["\']', response.text, flags=re.IGNORECASE))
+            hrefs.update(set(re.findall(r'href=["\']([^"\']+/(?:auction|purchase)/[^"\']+)["\']', response.text, flags=re.IGNORECASE)))
+            hrefs.update(set(re.findall(r'https?://[^"\'\s]+/(?:auction|purchase)/[^"\'\s]+', response.text, flags=re.IGNORECASE)))
+
         if not hrefs:
-            hrefs = set(re.findall(r'https?://[^"\'\s]+/auction/[^"\'\s]+', response.text, flags=re.IGNORECASE))
+            return []
 
         cards: list[dict[str, Any]] = []
         for href in hrefs:
@@ -128,7 +160,7 @@ class MosPortalBrowserFallback:
 
 
 def _extract_external_id_from_url(url: str) -> str | None:
-    match = re.search(r"/auction/([A-Za-z0-9\-]+)", url)
+    match = re.search(r"/(?:auction|purchase)/([A-Za-z0-9\-]+)", url)
     if match:
         return match.group(1)
     match = re.search(r"id=([A-Za-z0-9\-]+)", url)

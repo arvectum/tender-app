@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from typing import Any
 from urllib.parse import urljoin
@@ -30,6 +31,11 @@ class MosPortalApiClient:
         warnings: list[str] = []
         errors: list[str] = []
         aggregated: list[dict[str, Any]] = []
+
+        use_legacy_api = os.getenv("MOS_PORTAL_USE_LEGACY_API", "false").strip().lower() in {"1", "true", "yes", "on"}
+        if not use_legacy_api:
+            warnings.append("mos_portal legacy API probing disabled; using browser fallback")
+            return [], warnings, errors
 
         for base_url in self.settings.mos_portal_api_base_urls:
             base_unreachable = False
