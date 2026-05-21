@@ -634,30 +634,26 @@ def _resolve_tech_spec_confirmation_status(
     margin_percent: Decimal | float | None,
 ) -> str | None:
     if not is_relevant or hard_reject_reason:
-        return None
+        return "reject"
 
-    matched = bool(matched_fields or [])
-    mismatched = bool(mismatched_fields or [])
-    relevance_value = Decimal(str(relevance_score)) if relevance_score is not None else None
-    match_value = Decimal(str(match_score)) if match_score is not None else None
+    key_fields = {"brand", "model", "article", "category", "color", "params", "parameter", "parameters"}
+    matched_key = {field for field in (matched_fields or []) if field in key_fields}
+    mismatched_key = {field for field in (mismatched_fields or []) if field in key_fields}
+    available_key = matched_key | mismatched_key
+
+    if not available_key:
+        return "reject"
+
     margin_value = Decimal(str(margin_percent)) if margin_percent is not None else None
-
-    is_full_match = matched and not mismatched and (
-        (relevance_value is not None and relevance_value >= Decimal("0.99"))
-        or (match_value is not None and match_value >= Decimal("0.99"))
-    )
+    is_full_match = bool(matched_key) and not mismatched_key and matched_key == available_key
     if is_full_match:
         return "green"
 
-    is_partial_match = matched and (
-        mismatched
-        or (relevance_value is not None and relevance_value > Decimal("0"))
-        or (match_value is not None and match_value > Decimal("0"))
-    )
+    is_partial_match = bool(matched_key) and bool(mismatched_key)
     if is_partial_match and margin_value is not None and margin_value <= Decimal("30"):
         return "yellow"
 
-    return None
+    return "reject"
 
 
 def _apply_decision_conditional_formatting(ws) -> None:
