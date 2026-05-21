@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db import Base
-from app.models import ItemCostCalculation, MarketOffer, Purchase, PurchaseItem
+from app.models import ItemCostCalculation, MarketOffer, Purchase, PurchaseCalculation, PurchaseItem
 from app.services.calculation_service import calculate_purchase
 
 
@@ -176,3 +176,34 @@ def test_no_offers_status() -> None:
         calc = session.scalar(select(ItemCostCalculation).where(ItemCostCalculation.purchase_item_id == item.id))
         assert calc is not None
         assert calc.status in {"no_relevant_offers", "needs_manual_price_search"}
+
+
+def test_fallback_to_items_max_total_price_when_purchase_total_missing() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        purchase = Purchase(
+            source="fixture",
+            external_id="MOS-24",
+            title="Поставка товара",
+            max_total_price=None,
+            parsed_at=utc_now(),
+        )
+        item = PurchaseItem(
+            position_external_id="POS-1",
+            position_hash="hash-MOS-24",
+            item_name="Товар X",
+            quantity=Decimal("1"),
+            max_total_price=Decimal("300"),
+        )
+        purchase.items.append(item)
+        session.add(purchase)
+        session.commit()
+        session.refresh(purchase)
+
+        calculate_purchase(session, purchase.id)
+
+        purchase_calc = session.scalar(select(PurchaseCalculation).where(PurchaseCalculation.purchase_id == purchase.id))
+        assert purchase_calc is not None
+        assert float(purchase_calc.max_total_price) == 300.0

@@ -87,6 +87,10 @@ def calculate_purchase(session: Session, purchase_id: int) -> PurchaseCalculatio
             unknown_delivery_items_count += 1
 
     max_total_price = Decimal(purchase.max_total_price or Decimal("0"))
+    if max_total_price <= 0:
+        items_max_total = sum((Decimal(item.max_total_price or Decimal("0")) for item in purchase.items), Decimal("0"))
+        if items_max_total > 0:
+            max_total_price = items_max_total
     cost_before_tax = _quantize_money(estimated_cost)
     vat_amount = _calculate_vat(cost_before_tax, vat_mode=vat_mode, vat_rate=vat_rate)
     cost_after_tax = _quantize_money(cost_before_tax + vat_amount)
