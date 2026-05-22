@@ -100,6 +100,7 @@ def generate_small_tender_report(
                 "price",
             ],
         )
+        market_price_source_note = "from_input"
         if market_unit_price is None and offer_source_url:
             resolved = _resolve_price_from_offer_source(
                 purchase_id=purchase_id,
@@ -109,8 +110,10 @@ def generate_small_tender_report(
             )
             if resolved is not None:
                 market_unit_price = resolved
+                market_price_source_note = "auction_api_costPerUnit"
                 if found_offer_unit_price is None:
                     found_offer_unit_price = resolved
+        market_price_source_domain = _extract_domain(offer_source_url)
 
         if _is_non_goods_item(item_name):
             excluded_non_goods_count += 1
@@ -124,6 +127,9 @@ def generate_small_tender_report(
                     "tz_match_type": "skipped",
                     "strict_full_match": False,
                     "tz_overlap_ratio": 0.0,
+                    "market_price_source_url": offer_source_url,
+                    "market_price_source_domain": _extract_domain(offer_source_url),
+                    "market_price_source_note": "from_input",
                     "margin_pct": None,
                     "decision_status": "excluded",
                     "decision_reason": "excluded_non_goods",
@@ -213,6 +219,9 @@ def generate_small_tender_report(
                 "market_unit_price": market_unit_price,
                 "found_offer_unit_price": found_offer_unit_price,
                 "offer_source_url": offer_source_url,
+                "market_price_source_url": offer_source_url,
+                "market_price_source_domain": market_price_source_domain,
+                "market_price_source_note": market_price_source_note,
                 "margin_pct": margin_pct,
                 "decision_status": decision_status,
                 "risk_level": risk_level,
@@ -230,6 +239,9 @@ def generate_small_tender_report(
                 "tz_match_type": match_type,
                 "strict_full_match": strict_full_match,
                 "tz_overlap_ratio": round(overlap, 4),
+                "market_price_source_url": offer_source_url,
+                "market_price_source_domain": market_price_source_domain,
+                "market_price_source_note": market_price_source_note,
                 "margin_pct": margin_pct,
                 "decision_status": decision_status,
                 "decision_reason": decision_reason,
@@ -492,6 +504,15 @@ def _extract_auction_id(url: str) -> str | None:
     if len(path_parts) >= 2 and path_parts[0] == "auction" and path_parts[1].isdigit():
         return path_parts[1]
     return None
+
+
+def _extract_domain(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        return (urlparse(url).netloc or "").lower()
+    except Exception:
+        return ""
 
 
 def _fetch_auction_items(auction_id: str) -> list[dict[str, object]]:
