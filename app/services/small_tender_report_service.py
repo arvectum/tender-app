@@ -557,8 +557,22 @@ def _write_xlsx(path: Path, rows: list[dict[str, object]]) -> None:
     if rows:
         headers = list(rows[0].keys())
         ws.append(headers)
+        url_columns = {h for h in ("market_price_source_url", "offer_source_url") if h in headers}
+
         for row in rows:
             ws.append([row.get(h) for h in headers])
+            current_row = ws.max_row
+            for col_name in url_columns:
+                value = row.get(col_name)
+                if not isinstance(value, str):
+                    continue
+                value = value.strip()
+                if not value or not (value.startswith("http://") or value.startswith("https://")):
+                    continue
+                col_idx = headers.index(col_name) + 1
+                cell = ws.cell(row=current_row, column=col_idx)
+                cell.hyperlink = value
+                cell.style = "Hyperlink"
 
     wb.save(path)
 
