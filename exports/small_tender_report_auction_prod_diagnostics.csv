@@ -1,6 +1,10 @@
 purchase_external_id,attachment_path,tz_extraction_status,tz_extraction_reason,tz_text_len,tz_match_type,strict_full_match,tz_overlap_ratio,market_price_source_url,market_price_source_domain,market_price_source_note,margin_pct,decision_status,decision_reason
-10208353,exports/tz_files_auction/10208353/Техническое задание.docx,ok,,18272,none,False,0.0065,https://zakupki.mos.ru/auction/10208353,zakupki.mos.ru,from_input,-24.91,reject,strict_full_match_required:none
-10208353,exports/tz_files_auction/10208353/Техническое задание.docx,ok,,18272,none,False,0.0104,https://zakupki.mos.ru/auction/10208353,zakupki.mos.ru,from_input,-6.99,reject,strict_full_match_required:none
-10208353,exports/tz_files_auction/10208353/Техническое задание.docx,ok,,18272,none,False,0.0091,https://zakupki.mos.ru/auction/10208353,zakupki.mos.ru,from_input,0.0,reject,strict_full_match_required:none
-10208351,exports/tz_files_auction/10208351/Приложение №1 к Договору (Техническое задание).docx,ok,,13281,none,False,0.0059,https://zakupki.mos.ru/auction/10208351,zakupki.mos.ru,from_input,0.0,reject,strict_full_match_required:none
-10208351,exports/tz_files_auction/10208351/Приложение №1 к Договору (Техническое задание).docx,ok,,13281,none,False,0.0,https://zakupki.mos.ru/auction/10208351,zakupki.mos.ru,from_input,-993.75,reject,strict_full_match_required:none
+10208354,,skipped,excluded_non_goods,0,skipped,False,0.0,https://zakupki.mos.ru/auction/10208354,zakupki.mos.ru,from_input,,excluded,excluded_non_goods
+10208353,exports/tz_files_auction/10208353/Техническое задание.docx,ok,,18272,none,False,0.0065,https://zakupki.mos.ru/auction/10208353,zakupki.mos.ru,invalid_market_source_domain,,reject,strict_full_match_required:none
+10208353,exports/tz_files_auction/10208353/Техническое задание.docx,ok,,18272,none,False,0.0104,https://zakupki.mos.ru/auction/10208353,zakupki.mos.ru,invalid_market_source_domain,,reject,strict_full_match_required:none
+10208353,exports/tz_files_auction/10208353/Техническое задание.docx,ok,,18272,none,False,0.0091,https://zakupki.mos.ru/auction/10208353,zakupki.mos.ru,invalid_market_source_domain,,reject,strict_full_match_required:none
+10208336,,skipped,excluded_non_goods,0,skipped,False,0.0,https://zakupki.mos.ru/auction/10208336,zakupki.mos.ru,from_input,,excluded,excluded_non_goods
+10208352,,skipped,excluded_non_goods,0,skipped,False,0.0,https://zakupki.mos.ru/auction/10208352,zakupki.mos.ru,from_input,,excluded,excluded_non_goods
+10208352,,skipped,excluded_non_goods,0,skipped,False,0.0,https://zakupki.mos.ru/auction/10208352,zakupki.mos.ru,from_input,,excluded,excluded_non_goods
+10208351,exports/tz_files_auction/10208351/Приложение №1 к Договору (Техническое задание).docx,ok,,13281,none,False,0.0059,https://zakupki.mos.ru/auction/10208351,zakupki.mos.ru,invalid_market_source_domain,,reject,strict_full_match_required:none
+10208351,exports/tz_files_auction/10208351/Приложение №1 к Договору (Техническое задание).docx,ok,,13281,none,False,0.0,https://zakupki.mos.ru/auction/10208351,zakupki.mos.ru,invalid_market_source_domain,,reject,strict_full_match_required:none
