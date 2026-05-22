@@ -61,17 +61,33 @@ def generate_small_tender_report(
 
     report_rows: list[dict[str, object]] = []
     diag_rows: list[dict[str, object]] = []
+    input_rows_count = len(market_rows)
+    excluded_non_goods_count = 0
 
     for row in market_rows:
         purchase_id = str(row.get("purchase_external_id", "")).strip()
         item_name = str(row.get("item_name", "")).strip()
         offer_title = str(row.get("offer_title", "")).strip()
+        offer_source_url = str(row.get("offer_source_url", "")).strip()
+        found_offer_unit_price = _pick_first_price(
+            row,
+            [
+                "found_offer_unit_price",
+                "offered_unit_price",
+                "unit_price",
+                "effective_unit_price",
+                "market_price",
+                "min_price",
+                "final_price",
+                "price",
+            ],
+        )
         market_unit_price = _pick_first_price(
             row,
             [
+                "market_unit_price",
                 "unit_price",
                 "offered_unit_price",
-                "market_unit_price",
                 "market_price",
                 "found_offer_unit_price",
                 "effective_unit_price",
@@ -80,6 +96,25 @@ def generate_small_tender_report(
                 "price",
             ],
         )
+
+        if _is_non_goods_item(item_name):
+            excluded_non_goods_count += 1
+            diag_rows.append(
+                {
+                    "purchase_external_id": purchase_id,
+                    "attachment_path": "",
+                    "tz_extraction_status": "skipped",
+                    "tz_extraction_reason": "excluded_non_goods",
+                    "tz_text_len": 0,
+                    "tz_match_type": "skipped",
+                    "strict_full_match": False,
+                    "tz_overlap_ratio": 0.0,
+                    "margin_pct": None,
+                    "decision_status": "excluded",
+                    "decision_reason": "excluded_non_goods",
+                }
+            )
+            continue
 
         extraction = extraction_by_purchase.get(purchase_id)
         if extraction is None:
@@ -128,6 +163,10 @@ def generate_small_tender_report(
             decision_status = "reject"
             decision_reason = f"strict_full_match_required:{match_type}"
             risk_level = "critical"
+        elif market_unit_price is None or found_offer_unit_price is None:
+            decision_status = "reject"
+            decision_reason = "missing_search_price"
+            risk_level = "critical"
         elif margin_pct is None:
             decision_status = "reject"
             decision_reason = "missing_price_for_margin"
@@ -157,6 +196,8 @@ def generate_small_tender_report(
                 "strict_full_match": strict_full_match,
                 "tender_unit_price_ref": tender_ref_price,
                 "market_unit_price": market_unit_price,
+                "found_offer_unit_price": found_offer_unit_price,
+                "offer_source_url": offer_source_url,
                 "margin_pct": margin_pct,
                 "decision_status": decision_status,
                 "risk_level": risk_level,
@@ -185,7 +226,9 @@ def generate_small_tender_report(
     _write_csv(diagnostics_csv, diag_rows)
 
     return {
+        "input_rows": input_rows_count,
         "report_rows": len(report_rows),
+        "excluded_non_goods_rows": excluded_non_goods_count,
         "diagnostics_rows": len(diag_rows),
         "full_match_rows": sum(1 for r in report_rows if r.get("tz_match_type") == "full"),
         "green_rows": sum(1 for r in report_rows if r.get("decision_status") == "green"),
@@ -283,6 +326,22 @@ def _tokenize(text: str) -> set[str]:
     prepared = text.lower().replace("ё", "е")
     prepared = re.sub(r"[^a-zа-я0-9]+", " ", prepared, flags=re.IGNORECASE)
     return {token for token in prepared.split() if len(token) >= 4}
+
+
+def _is_non_goods_item(item_name: str) -> bool:
+    text = _normalize_ru_text(item_name)
+    non_goods_markers = (
+        "монтаж",
+        "демонтаж",
+        "ремонт",
+        "обслуживание",
+        "установка",
+        "наладка",
+        "проектирование",
+        "услуги",
+        "работы",
+    )
+    return any(marker in text for marker in non_goods_markers)
 
 
 def _normalize_ru_text(text: str) -> str:
