@@ -5,6 +5,9 @@ import json
 import re
 import subprocess
 import zipfile
+from urllib.parse import urlparse
+
+import requests
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -63,6 +66,7 @@ def generate_small_tender_report(
     diag_rows: list[dict[str, object]] = []
     input_rows_count = len(market_rows)
     excluded_non_goods_count = 0
+    auction_items_cache: dict[str, list[dict[str, object]]] = {}
 
     for row in market_rows:
         purchase_id = str(row.get("purchase_external_id", "")).strip()
@@ -96,6 +100,17 @@ def generate_small_tender_report(
                 "price",
             ],
         )
+        if market_unit_price is None and offer_source_url:
+            resolved = _resolve_price_from_offer_source(
+                purchase_id=purchase_id,
+                item_name=item_name,
+                offer_source_url=offer_source_url,
+                cache=auction_items_cache,
+            )
+            if resolved is not None:
+                market_unit_price = resolved
+                if found_offer_unit_price is None:
+                    found_offer_unit_price = resolved
 
         if _is_non_goods_item(item_name):
             excluded_non_goods_count += 1
@@ -435,6 +450,64 @@ def _is_non_product_tz_text(text: str) -> bool:
     }
     overlap = sum(1 for t in tokens if t in noise_markers)
     return overlap >= 2
+
+
+def _resolve_price_from_offer_source(
+    *,
+    purchase_id: str,
+    item_name: str,
+    offer_source_url: str,
+    cache: dict[str, list[dict[str, object]]],
+) -> float | None:
+    auction_id = _extract_auction_id(offer_source_url)
+    if not auction_id:
+        return None
+
+    items = cache.get(auction_id)
+    if items is None:
+        items = _fetch_auction_items(auction_id)
+        cache[auction_id] = items
+    if not items:
+        return None
+
+    exact_norm = _normalize_ru_text(item_name)
+    for item in items:
+        if _normalize_ru_text(str(item.get("name", ""))) == exact_norm:
+            price = _to_float(item.get("costPerUnit"))
+            if price is not None:
+                return price
+
+    for item in items:
+        price = _to_float(item.get("costPerUnit"))
+        if price is not None:
+            return price
+    return None
+
+
+def _extract_auction_id(url: str) -> str | None:
+    try:
+        path_parts = [p for p in urlparse(url).path.split("/") if p]
+    except Exception:
+        return None
+    if len(path_parts) >= 2 and path_parts[0] == "auction" and path_parts[1].isdigit():
+        return path_parts[1]
+    return None
+
+
+def _fetch_auction_items(auction_id: str) -> list[dict[str, object]]:
+    api_url = f"https://zakupki.mos.ru/newapi/api/Auction/Get?auctionId={auction_id}"
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            response = session.get(api_url, timeout=20)
+            response.raise_for_status()
+            payload = response.json()
+    except Exception:
+        return []
+    items = payload.get("items")
+    if isinstance(items, list):
+        return [i for i in items if isinstance(i, dict)]
+    return []
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
