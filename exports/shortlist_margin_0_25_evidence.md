@@ -1,48 +1,41 @@
-# Evidence for shortlist_margin_0_25
+# Evidence for shortlist_margin_0_25 (strict-match revalidation)
 
-## Browser pages traversed (Playwright, anti-bot обход через реальный браузерный рендер)
-- https://zakupki.mos.ru/ (status 200)
-- https://zakupki.mos.ru/auction/10208353 (status 200)
-- https://zakupki.mos.ru/auction/10208351 (status 200)
-- https://agregatoreat.ru/ (status 200)
-- https://agregatoreat.ru/purchases/announcement (status 200)
+## Validation rule (strict-match)
+Для включения позиции в shortlist требуется **100% соответствие ТЗ** по всем доступным атрибутам:
+- тип: только товар (не работы/услуги)
+- бренд/производитель
+- модель/артикул
+- размер/технические параметры
+- комплектация/упаковка
+- единица поставки/кратность
 
-Artifacts:
-- exports/page_scan/browser_scan_results.json
-- exports/page_scan/browser_scan_1.png
-- exports/page_scan/browser_scan_2.png
-- exports/page_scan/browser_scan_3.png
-- exports/page_scan/browser_scan_4.png
-- exports/page_scan/browser_scan_5.png
+## Source rows revalidated
+Исходно в shortlist было 4 позиции. Все 4 исключены как не прошедшие strict-match.
 
-## External market offers used (non-zakupki)
 1) purchase 10208353
-- item: Стенд ProfMarker Гражданская оборона ГО и ЧС 100х75 см
-- tender price: 3485.00
-- offer page: https://atis-ars.ru/category/stendy/grazdanskaya-oborona
-- market price used: 3264.00
-- margin_pct=((3485-3264)/3485*100)=6.34
+- ТЗ: `Стенд ProfMarker Гражданская оборона ГО и ЧС 100х75 см`
+- offer: https://atis-ars.ru/category/stendy/grazdanskaya-oborona
+- Решение: **исключено**
+- Причина: ссылка ведёт на категорию, а не на карточку конкретного товара; нет подтверждения точного бренда `ProfMarker` и размера `100х75 см`.
 
 2) purchase 10208353
-- item: Стенд информационный Пожарная безопасность 900х740 мм 1 карман А4
-- tender price: 2985.00
-- offer page: https://e-kvadrat.ru/informacionnye-stendy-s-karmanami-a4-pozharnaya-bezopasnost
-- market price used: 2975.00
-- margin_pct=((2985-2975)/2985*100)=0.34
+- ТЗ: `Стенд информационный ProfMarker "Пожарная безопасность", красный, 900х740 мм, 1 карман А4`
+- offer: https://e-kvadrat.ru/informacionnye-stendy-s-karmanami-a4-pozharnaya-bezopasnost
+- Решение: **исключено**
+- Причина: не подтверждён бренд `ProfMarker` и цвет `красный`; совпадение только по общей тематике/форм-фактору недостаточно для strict-match.
 
 3) purchase 10208351
-- item: Зажим прокалывающий Al/Cu 10-50 мм2 / Al/Cu 1.5-10 мм2
-- tender price: 320.00
-- offer page: https://ensnab24.ru/337290/
-- market price used: 277.00
-- margin_pct=((320-277)/320*100)=13.44
+- ТЗ: `Зажим прокалывающий "Тайко Электроникс РУС" Al/Cu 10-50 мм2 / Al/Cu 1.5-10 мм2`
+- offer: https://ensnab24.ru/337290/
+- Решение: **исключено**
+- Причина: в shortlist отсутствует/не подтверждён производитель `Тайко Электроникс РУС`; без подтверждения бренда позиция не является 100% релевантной.
 
 4) purchase 10208351
-- item: Колодка клеммная EKF plc-jxb-10/35gy JXB-10/3 серая 70А 50 шт
-- tender price: 3500.00
-- offer page: https://materials.ru/products/kolodka-klemmnaya-jxb-10-35-seraya-ekf-proxima-plc-jxb-10-35gy
-- market price used: 3000.00
-- margin_pct=((3500-3000)/3500*100)=14.29
+- ТЗ: `Колодка клеммная EKF plc-jxb-10/35gy JXB-10/3 серая 70А 50 шт`
+- offer: https://materials.ru/products/kolodka-klemmnaya-jxb-10-35-seraya-ekf-proxima-plc-jxb-10-35gy
+- Решение: **исключено**
+- Причина: по офферу не подтверждена полная комплектация `50 шт` и точная модельная связка `plc-jxb-10/35gy + JXB-10/3`; частичное совпадение по бренду/базовой модели недостаточно.
 
 ## Result
-- shortlist rows with margin in [0,25]: 4
+- shortlist rows with margin in [0,25] after strict-match: **0**
+- removed rows: **4**
