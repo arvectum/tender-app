@@ -163,43 +163,66 @@ class MosPortalApiClient:
 
     def _fetch_cssp_purchase_query(self, status: str, limit: int | None) -> tuple[list[dict[str, Any]], list[str]]:
         warnings: list[str] = []
-        safe_limit = max(1, min(limit or 20, 100))
-        fetch_size = max(50, min(safe_limit * 20, 500))
-
-        query_dto = {
-            "page": 1,
-            "size": fetch_size,
-            "stateName": status,
-        }
+        fetch_size = 200
+        page = 1
+        max_pages = 1000
         url = "https://old.zakupki.mos.ru/api/Cssp/Purchase/Query"
 
+        normalized_all: list[dict[str, Any]] = []
+
         try:
-            payload = self._request_json("GET", url, params={"queryDto": json.dumps(query_dto, ensure_ascii=False)})
-            records = _extract_records(payload)
-            normalized: list[dict[str, Any]] = []
-            for record in records:
-                if not isinstance(record, dict):
-                    continue
-                normalized.append(_normalize_cssp_record(record))
+            while page <= max_pages:
+                query_dto = {
+                    "page": page,
+                    "size": fetch_size,
+                    "stateName": status,
+                }
+                try:
+                    payload = self._request_json("GET", url, params={"queryDto": json.dumps(query_dto, ensure_ascii=False)})
+                except Exception as page_exc:  # noqa: BLE001
+                    if page > 1 and ("400" in str(page_exc) or "Bad Request" in str(page_exc)):
+                        warnings.append(f"mos_portal cssp query stopped at page={page} due to HTTP 400")
+                        break
+                    raise
+                records = _extract_records(payload)
+                if not records:
+                    break
+
+                page_normalized = [_normalize_cssp_record(record) for record in records if isinstance(record, dict)]
+                if not page_normalized:
+                    break
+
+                normalized_all.extend(page_normalized)
+
+                if limit is not None and len(normalized_all) >= limit:
+                    break
+
+                total_count = _extract_total_count(payload)
+                if total_count is not None and total_count <= page * fetch_size:
+                    break
+
+                page += 1
 
             with_price = [
-                row for row in normalized
+                row for row in normalized_all
                 if row.get("externalId") and _pick_positive_nmc(row) is not None and _is_likely_goods_title(str(row.get("title") or ""))
             ]
             if not with_price:
-                with_price = [row for row in normalized if row.get("externalId") and _pick_positive_nmc(row) is not None]
+                with_price = [row for row in normalized_all if row.get("externalId") and _pick_positive_nmc(row) is not None]
 
             filtered = with_price
             if not filtered:
-                filtered = [row for row in normalized if row.get("externalId") and _is_likely_goods_title(str(row.get("title") or ""))]
+                filtered = [row for row in normalized_all if row.get("externalId") and _is_likely_goods_title(str(row.get("title") or ""))]
             if not filtered:
-                filtered = [row for row in normalized if row.get("externalId")]
+                filtered = [row for row in normalized_all if row.get("externalId")]
 
+            pages_scanned = page if normalized_all else 0
             if filtered:
-                connectors_logger.info("mos_portal cssp query success | records=%s", len(filtered))
+                connectors_logger.info("mos_portal cssp query success | pages=%s records=%s", pages_scanned, len(filtered))
+                warnings.append(f"mos_portal cssp query pages_scanned={pages_scanned}")
             else:
-                warnings.append("mos_portal cssp query returned 0 normalized records")
-            return filtered[:safe_limit], warnings
+                warnings.append(f"mos_portal cssp query returned 0 normalized records | pages_scanned={pages_scanned}")
+            return filtered[:limit] if limit is not None else filtered, warnings
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"mos_portal cssp query failed: {exc}")
             return [], warnings
@@ -356,6 +379,19 @@ def _extract_records(payload: Any) -> list[dict[str, Any]]:
                 return nested_list
 
     return []
+
+
+def _extract_total_count(payload: Any) -> int | None:
+    if isinstance(payload, dict):
+        for key in ("count", "total", "totalCount", "recordsTotal"):
+            value = payload.get(key)
+            if value is None:
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+    return None
 
 
 def _extract_first_record(payload: Any) -> dict[str, Any] | None:
