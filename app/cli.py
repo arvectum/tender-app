@@ -40,7 +40,11 @@ from app.services.item_attribute_service import ItemAttributeService
 from app.services.job_service import create_job_run, mark_failed, mark_running, mark_success
 from app.services.offer_template_service import export_offer_template
 from app.services.rematch_service import rematch_offers
-from app.services.small_tender_report_service import build_single_file_manifest, generate_small_tender_report
+from app.services.small_tender_report_service import (
+    build_manifest_from_attachments_dir,
+    build_single_file_manifest,
+    generate_small_tender_report,
+)
 from app.services.supplier_service import SupplierService
 from app.services.task_runner import run_calculate_task, run_evaluate_task, run_export_excel_task, run_import_offers_task, run_parse_task, run_search_prices_task
 from app.services.user_service import UserService
@@ -501,14 +505,21 @@ def export_excel_command(output_path: Path = Path("exports/tender_small_volume_e
 @cli.command("small-tender-manifest")
 def small_tender_manifest_command(
     source_csv: Path = typer.Option(..., "--source-csv", exists=True, dir_okay=False),
-    attachment_path: Path = typer.Option(..., "--attachment-path", dir_okay=False),
+    attachment_path: Path = typer.Option(..., "--attachment-path", dir_okay=True, file_okay=True),
     out_manifest_csv: Path = typer.Option(Path("exports/small_tender_attachments_manifest.csv"), "--out-manifest-csv"),
 ) -> None:
-    output = build_single_file_manifest(
-        source_csv=source_csv,
-        attachment_path=attachment_path,
-        out_manifest_csv=out_manifest_csv,
-    )
+    if attachment_path.is_dir():
+        output = build_manifest_from_attachments_dir(
+            source_csv=source_csv,
+            attachments_root=attachment_path,
+            out_manifest_csv=out_manifest_csv,
+        )
+    else:
+        output = build_single_file_manifest(
+            source_csv=source_csv,
+            attachment_path=attachment_path,
+            out_manifest_csv=out_manifest_csv,
+        )
     typer.echo(f"Manifest generated: {output}")
 
 

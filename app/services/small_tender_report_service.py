@@ -554,3 +554,35 @@ def build_single_file_manifest(*, source_csv: Path, attachment_path: Path, out_m
         for pid in purchase_ids:
             writer.writerow({"purchase_external_id": pid, "attachment_path": str(attachment_path)})
     return out_manifest_csv
+
+
+def build_manifest_from_attachments_dir(*, source_csv: Path, attachments_root: Path, out_manifest_csv: Path) -> Path:
+    rows = _read_csv(source_csv)
+    purchase_ids = sorted({str(r.get("purchase_external_id", "")).strip() for r in rows if str(r.get("purchase_external_id", "")).strip()})
+
+    allowed_suffixes = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt", ".rtf", ".zip"}
+
+    def _score(path: Path) -> tuple[int, int, str]:
+        name = path.name.lower().replace("ё", "е")
+        likely_tz = any(marker in name for marker in ("тз", "тех", "техническ", "spec", "задани"))
+        noisy_doc = any(marker in name for marker in ("регистрац", "эп", "инструкц", "пользовател"))
+        # Lower score is better.
+        return (0 if likely_tz else 1, 1 if noisy_doc else 0, name)
+
+    out_rows: list[dict[str, str]] = []
+    for pid in purchase_ids:
+        pid_dir = attachments_root / pid
+        if not pid_dir.exists() or not pid_dir.is_dir():
+            continue
+        candidates = [p for p in pid_dir.iterdir() if p.is_file() and p.suffix.lower() in allowed_suffixes]
+        if not candidates:
+            continue
+        for path in sorted(candidates, key=_score):
+            out_rows.append({"purchase_external_id": pid, "attachment_path": str(path)})
+
+    out_manifest_csv.parent.mkdir(parents=True, exist_ok=True)
+    with out_manifest_csv.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["purchase_external_id", "attachment_path"])
+        writer.writeheader()
+        writer.writerows(out_rows)
+    return out_manifest_csv

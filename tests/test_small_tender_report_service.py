@@ -3,7 +3,11 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from app.services.small_tender_report_service import build_single_file_manifest, generate_small_tender_report
+from app.services.small_tender_report_service import (
+    build_manifest_from_attachments_dir,
+    build_single_file_manifest,
+    generate_small_tender_report,
+)
 
 
 def _write_csv(path: Path, rows: list[dict[str, object]]) -> None:
@@ -134,6 +138,43 @@ def test_build_single_file_manifest(tmp_path: Path) -> None:
 
     assert [row["purchase_external_id"] for row in rows] == ["P1", "P2"]
     assert all(row["attachment_path"] == str(attachment) for row in rows)
+
+
+def test_build_manifest_from_attachments_dir_prefers_tz_files(tmp_path: Path) -> None:
+    source_csv = tmp_path / "source.csv"
+    attachments_root = tmp_path / "attachments"
+    out_manifest = tmp_path / "manifest.csv"
+
+    _write_csv(
+        source_csv,
+        [
+            {"purchase_external_id": "P1", "item_name": "x"},
+            {"purchase_external_id": "P2", "item_name": "x"},
+        ],
+    )
+
+    p1_dir = attachments_root / "P1"
+    p1_dir.mkdir(parents=True)
+    (p1_dir / "Регистрация_с_ЭП_и_без_ЭП.pdf").write_text("noise", encoding="utf-8")
+    (p1_dir / "Техническое_задание.docx").write_text("tz", encoding="utf-8")
+
+    p2_dir = attachments_root / "P2"
+    p2_dir.mkdir(parents=True)
+    (p2_dir / "specification.pdf").write_text("tz2", encoding="utf-8")
+
+    result = build_manifest_from_attachments_dir(
+        source_csv=source_csv,
+        attachments_root=attachments_root,
+        out_manifest_csv=out_manifest,
+    )
+
+    assert result == out_manifest
+    with out_manifest.open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert len(rows) == 3
+    p1_rows = [row for row in rows if row["purchase_external_id"] == "P1"]
+    assert p1_rows[0]["attachment_path"].endswith("Техническое_задание.docx")
 
 
 def test_generate_small_tender_report_strict_attribute_match_from_tz_text(tmp_path: Path) -> None:
