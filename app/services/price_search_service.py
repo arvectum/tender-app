@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
@@ -205,7 +206,7 @@ class PriceSearchService:
                 is_relevant=False if force_irrelevant else bool(candidate.is_relevant),
                 risk_flags=sorted(set(candidate.risk_flags + (["duplicate"] if force_irrelevant else []))),
                 comment=candidate.comment,
-                raw_payload=candidate.raw_payload,
+                raw_payload=_json_safe(candidate.raw_payload),
                 match_score=Decimal(str(candidate.match_score)) if candidate.match_score is not None else None,
                 match_reasons_json=candidate.match_reasons,
                 match_risk_flags_json=candidate.match_risk_flags,
@@ -319,6 +320,18 @@ def clear_offers_for_mode(session: Session, mode: str, purchase_id: int | None =
     result = session.execute(stmt)
     session.commit()
     return int(result.rowcount or 0)
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def _region_code_from_text(region: str | None) -> str | None:
