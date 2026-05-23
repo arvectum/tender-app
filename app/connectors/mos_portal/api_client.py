@@ -4,7 +4,7 @@ import json
 import os
 import re
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -82,6 +82,8 @@ class MosPortalApiClient:
         if not external_id:
             return raw_purchase
 
+        detail_timeout = self.settings.connector_request_timeout_seconds
+
         for base_url in self.settings.mos_portal_api_base_urls:
             for path in (
                 f"/auctions/{external_id}",
@@ -91,7 +93,12 @@ class MosPortalApiClient:
             ):
                 url = self._build_url(base_url, path)
                 try:
-                    payload = self._request_json("GET", url)
+                    payload = self._request_json(
+                        "GET",
+                        url,
+                        timeout_seconds=detail_timeout,
+                        retry_attempts=1,
+                    )
                     record = _extract_first_record(payload)
                     if record:
                         merged = dict(raw_purchase)
@@ -100,10 +107,10 @@ class MosPortalApiClient:
                 except Exception:
                     continue
 
-        # If API detail did not work, try parsing public page JSON blobs.
+        # If API detail did not work, try parsing public page JSON blobs only for mos portal domains.
         url = _pick_first(raw_purchase, ["url", "link", "href"])
-        if url:
-            detail_from_page = self.fetch_detail_from_public_page(url)
+        if url and _is_mos_portal_url(url):
+            detail_from_page = self.fetch_detail_from_public_page(url, timeout_seconds=detail_timeout)
             if detail_from_page:
                 merged = dict(raw_purchase)
                 merged.update(detail_from_page)
@@ -111,9 +118,9 @@ class MosPortalApiClient:
 
         return raw_purchase
 
-    def fetch_detail_from_public_page(self, url: str) -> dict[str, Any] | None:
+    def fetch_detail_from_public_page(self, url: str, timeout_seconds: float | None = None) -> dict[str, Any] | None:
         try:
-            response = self._request("GET", url)
+            response = self._request("GET", url, timeout_seconds=timeout_seconds)
             html = response.text
         except Exception:
             return None
@@ -130,8 +137,17 @@ class MosPortalApiClient:
         url: str,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
+        retry_attempts: int | None = None,
     ) -> Any:
-        response = self._request(method=method, url=url, params=params, json_body=json_body)
+        response = self._request(
+            method=method,
+            url=url,
+            params=params,
+            json_body=json_body,
+            timeout_seconds=timeout_seconds,
+            retry_attempts=retry_attempts,
+        )
         return response.json()
 
     def _request(
@@ -140,6 +156,8 @@ class MosPortalApiClient:
         url: str,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        timeout_seconds: float | None = None,
+        retry_attempts: int | None = None,
     ) -> requests.Response:
         proxies = self.proxy_router.requests_proxies_for(url)
         if proxies:
@@ -153,13 +171,13 @@ class MosPortalApiClient:
                 url=url,
                 params=params,
                 json=json_body,
-                timeout=self.settings.http_timeout_seconds,
+                timeout=timeout_seconds if timeout_seconds is not None else self.settings.http_timeout_seconds,
                 proxies=proxies,
             )
             response.raise_for_status()
             return response
 
-        return retry_call(_call)
+        return retry_call(_call, attempts=retry_attempts)
 
     def _fetch_cssp_purchase_query(self, status: str, limit: int | None) -> tuple[list[dict[str, Any]], list[str]]:
         warnings: list[str] = []
@@ -463,3 +481,11 @@ def _is_unreachable_error(exc: Exception) -> bool:
         "max retries exceeded",
     ]
     return any(marker in text for marker in markers)
+
+
+def _is_mos_portal_url(url: str) -> bool:
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return False
+    return host.endswith("zakupki.mos.ru")

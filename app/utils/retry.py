@@ -45,7 +45,17 @@ def retry_call(
 
 def _default_should_retry(exc: Exception) -> bool:
     text = str(exc).lower()
-    non_retry_markers = ["captcha", "blocked", "403", "401", "forbidden"]
+    non_retry_markers = [
+        "captcha",
+        "blocked",
+        "403",
+        "401",
+        "forbidden",
+        "404",
+        "400",
+        "not found",
+        "bad request",
+    ]
     if any(marker in text for marker in non_retry_markers):
         return False
     return True
