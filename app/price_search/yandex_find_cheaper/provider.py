@@ -53,27 +53,10 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             candidate.risk_flags = sorted(set(candidate.risk_flags + relevance.risk_flags))
             candidates.append(candidate)
 
+        # Fail closed: when search is blocked/captcha/no parsable rows,
+        # return no candidates so caller marks item as needs_manual_price_search.
+        # This avoids persisting synthetic zero-price offers that inflate margin.
         if warnings and not candidates:
-            for warning in warnings:
-                candidates.append(
-                    MarketOfferCandidate(
-                        provider=self.provider_name,
-                        purchase_item_id=item.id,
-                        title=item.item_name,
-                        url=None,
-                        seller_name=None,
-                        region=self.settings.price_search_region,
-                        unit_price=Decimal("0"),
-                        available_quantity=Decimal("1"),
-                        delivery_price=Decimal(str(self.settings.default_unknown_delivery_cost)),
-                        delivery_days=None,
-                        is_relevant=False,
-                        relevance_score=0.0,
-                        raw_payload={"warning": warning, "query": query},
-                        risk_flags=["captcha_or_blocked", "needs_manual_price_search"],
-                        item_name=item.item_name,
-                        comment=warning,
-                    )
-                )
+            return []
 
         return candidates

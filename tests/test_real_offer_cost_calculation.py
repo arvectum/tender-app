@@ -177,6 +177,11 @@ def test_no_offers_status() -> None:
         assert calc is not None
         assert calc.status in {"no_relevant_offers", "needs_manual_price_search"}
 
+        purchase_calc = session.scalar(select(PurchaseCalculation).where(PurchaseCalculation.purchase_id == purchase.id))
+        assert purchase_calc is not None
+        assert float(purchase_calc.margin_percent) <= 0.0
+        assert float(purchase_calc.estimated_profit) <= 0.0
+
 
 def test_fallback_to_items_max_total_price_when_purchase_total_missing() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)

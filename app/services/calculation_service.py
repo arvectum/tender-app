@@ -91,6 +91,11 @@ def calculate_purchase(session: Session, purchase_id: int) -> PurchaseCalculatio
         items_max_total = sum((Decimal(item.max_total_price or Decimal("0")) for item in purchase.items), Decimal("0"))
         if items_max_total > 0:
             max_total_price = items_max_total
+    # Fail-closed: if there are problematic/unpriced items, do not publish optimistic
+    # margins from zero/partial costs. Clamp estimate to purchase budget floor.
+    if problematic_items_count > 0 and estimated_cost < max_total_price:
+        estimated_cost = max_total_price
+
     cost_before_tax = _quantize_money(estimated_cost)
     vat_amount = _calculate_vat(cost_before_tax, vat_mode=vat_mode, vat_rate=vat_rate)
     cost_after_tax = _quantize_money(cost_before_tax + vat_amount)
