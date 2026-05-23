@@ -334,3 +334,93 @@ def test_generate_small_tender_report_uses_alternative_price_fields_for_margin(t
     assert rows[0]["margin_pct"] == "24.98"
     assert rows[0]["decision_reason"] != "missing_price_for_margin"
     assert rows[0]["decision_status"] == "green"
+
+
+def test_generate_small_tender_report_mos_portal_endpoint_fallback(tmp_path: Path, monkeypatch) -> None:
+    market_csv = tmp_path / "market.csv"
+    ref_csv = tmp_path / "tender_ref.csv"
+    manifest_csv = tmp_path / "manifest.csv"
+
+    _write_csv(
+        market_csv,
+        [
+            {
+                "purchase_external_id": "10207839",
+                "source": "mos_portal",
+                "purchase_url": "https://zakupki.mos.ru/auction/10207839",
+                "item_name": "Техническое задание коммутатор Huawei S5735S-24T4S",
+                "offer_title": "Коммутатор Huawei S5735S-24T4S",
+                "unit_price": "90",
+                "offer_source_url": "https://supplier.example/huawei-s5735s-24t4s",
+            }
+        ],
+    )
+    _write_csv(ref_csv, [{"purchase_external_id": "10207839", "unit_price": "100"}])
+    _write_csv(
+        manifest_csv,
+        [{"purchase_external_id": "10207839", "attachment_path": str(tmp_path / "missing.docx")}],
+    )
+
+    class _FakeResponse:
+        def __init__(self, status_code: int = 200, json_payload: dict | None = None, content: bytes = b"", headers: dict | None = None):
+            self.status_code = status_code
+            self._json_payload = json_payload or {}
+            self.content = content
+            self.headers = headers or {}
+
+        def json(self) -> dict:
+            return self._json_payload
+
+        def raise_for_status(self) -> None:
+            if self.status_code >= 400:
+                raise RuntimeError(f"http_{self.status_code}")
+
+    class _FakeSession:
+        def __init__(self) -> None:
+            self.trust_env = True
+            self.headers: dict[str, str] = {}
+
+        def get(self, url: str, **kwargs):
+            if "Auction/Get" in url:
+                return _FakeResponse(
+                    200,
+                    json_payload={
+                        "files": [
+                            {"id": 1, "name": "Регистрация_с_ЭП_и_без_ЭП.pdf"},
+                            {"id": 2, "name": "Техническое_задание.txt"},
+                        ]
+                    },
+                )
+            if "FileStorage/Download" in url:
+                file_id = int((kwargs.get("params") or {}).get("id"))
+                if file_id == 2:
+                        return _FakeResponse(
+                            200,
+                            content=("Техническое задание коммутатор Huawei S5735S-24T4S " * 20).encode("utf-8"),
+                            headers={"content-type": "text/plain"},
+                        )
+                return _FakeResponse(404)
+            return _FakeResponse(404)
+
+    monkeypatch.setattr("app.services.small_tender_report_service.requests.Session", _FakeSession)
+
+    out_csv = tmp_path / "report.csv"
+    out_xlsx = tmp_path / "report.xlsx"
+    diag_csv = tmp_path / "diag.csv"
+
+    summary = generate_small_tender_report(
+        market_csv=market_csv,
+        tender_ref_csv=ref_csv,
+        out_csv=out_csv,
+        out_xlsx=out_xlsx,
+        diagnostics_csv=diag_csv,
+        attachments_manifest_csv=manifest_csv,
+    )
+
+    assert summary["report_rows"] == 1
+    with out_csv.open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert rows[0]["tz_extraction_status"] == "ok"
+    assert rows[0]["tz_attachment_path"].startswith("mos_portal_api:2:Техническое_задание.txt")
+    assert rows[0]["decision_status"] == "green"

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import csv
+import io
 import json
 import re
 import subprocess
 import zipfile
+import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
 from dataclasses import dataclass
@@ -12,6 +14,7 @@ from pathlib import Path
 from typing import Iterable
 
 from openpyxl import Workbook
+import requests
 
 
 @dataclass
@@ -60,6 +63,7 @@ def generate_small_tender_report(
     extraction_by_purchase: dict[str, AttachmentExtractionResult] = {}
     for purchase_id, paths in attachments_by_purchase.items():
         extraction_by_purchase[purchase_id] = _extract_first_successful_attachment(purchase_id, paths)
+    mos_portal_endpoint_cache: dict[str, AttachmentExtractionResult] = {}
 
     report_rows: list[dict[str, object]] = []
     diag_rows: list[dict[str, object]] = []
@@ -135,6 +139,16 @@ def generate_small_tender_report(
             market_price_source_note = "invalid_market_source_domain"
 
         extraction = extraction_by_purchase.get(purchase_id)
+        if extraction is None or extraction.status != "ok":
+            if _is_mos_portal_row(row):
+                endpoint_extraction = mos_portal_endpoint_cache.get(purchase_id)
+                if endpoint_extraction is None:
+                    endpoint_extraction = _extract_tz_from_mos_portal_endpoint(purchase_id)
+                    mos_portal_endpoint_cache[purchase_id] = endpoint_extraction
+                if endpoint_extraction.status == "ok":
+                    extraction = endpoint_extraction
+                elif extraction is None:
+                    extraction = endpoint_extraction
         if extraction is None:
             extraction = AttachmentExtractionResult(
                 purchase_external_id=purchase_id,
@@ -307,6 +321,157 @@ def _extract_first_successful_attachment(purchase_id: str, paths: Iterable[Path]
         reason=reason,
         text="",
     )
+
+
+def _is_mos_portal_row(row: dict[str, object]) -> bool:
+    source = str(row.get("source", "")).strip().lower()
+    if source == "mos_portal":
+        return True
+    source_name = str(row.get("source_name", "")).strip().lower()
+    if source_name == "mos_portal":
+        return True
+    url = str(row.get("purchase_url", "") or row.get("offer_source_url", "")).strip().lower()
+    return "zakupki.mos.ru" in url
+
+
+def _extract_tz_from_mos_portal_endpoint(purchase_id: str) -> AttachmentExtractionResult:
+    if not purchase_id:
+        return AttachmentExtractionResult(
+            purchase_external_id=purchase_id,
+            source_path="",
+            status="failed",
+            reason="empty_purchase_external_id",
+            text="",
+        )
+
+    session = requests.Session()
+    session.trust_env = False
+    session.headers.update({"User-Agent": "Mozilla/5.0", "Accept": "*/*"})
+
+    files = _mos_portal_auction_files(session, purchase_id)
+    if not files:
+        return AttachmentExtractionResult(
+            purchase_external_id=purchase_id,
+            source_path="",
+            status="failed",
+            reason="auction_get_no_files",
+            text="",
+        )
+
+    errors: list[str] = []
+    for file_id, file_name in files:
+        if not _is_likely_tz_name(file_name):
+            errors.append(f"rejected_non_tz_name:{file_id}:{file_name}")
+            continue
+        try:
+            data, content_type = _mos_portal_download_file(session, file_id)
+        except Exception as exc:  # pragma: no cover - network/runtime branch
+            errors.append(f"download_failed:{file_id}:{exc}")
+            continue
+        if len(data) < 512:
+            errors.append(f"too_small:{file_id}:{len(data)}")
+            continue
+
+        text = _clean_text(_extract_text_from_bytes(file_name, data, content_type))
+        if not text:
+            errors.append(f"rejected_empty_text:{file_id}:{file_name}")
+            continue
+
+        return AttachmentExtractionResult(
+            purchase_external_id=purchase_id,
+            source_path=f"mos_portal_api:{file_id}:{file_name}",
+            status="ok",
+            reason=None,
+            text=text,
+        )
+
+    return AttachmentExtractionResult(
+        purchase_external_id=purchase_id,
+        source_path="",
+        status="failed",
+        reason=";".join(errors) if errors else "all_candidates_rejected",
+        text="",
+    )
+
+
+def _is_likely_tz_name(name: str) -> bool:
+    lower = name.lower().replace("ё", "е")
+    if re.search(r"(регистрац|эп|инструкц|памятк|guide|widget|attach\\.svg)", lower):
+        return False
+    return bool(re.search(r"(тз|техническ|задани|spec|специф|описани)", lower))
+
+
+def _mos_portal_auction_files(session: requests.Session, auction_id: str) -> list[tuple[int, str]]:
+    url = "https://zakupki.mos.ru/newapi/api/Auction/Get"
+    try:
+        response = session.get(url, params={"auctionId": auction_id}, timeout=60)
+    except Exception:
+        return []
+    if response.status_code != 200:
+        return []
+    try:
+        payload = response.json()
+    except Exception:
+        return []
+
+    files = payload.get("files") or []
+    items: list[tuple[int, str]] = []
+    seen: set[int] = set()
+    for entry in files:
+        try:
+            file_id = int(entry.get("id"))
+        except Exception:
+            continue
+        if file_id in seen:
+            continue
+        seen.add(file_id)
+        name = str(entry.get("name") or entry.get("fileName") or f"Download_{file_id}")
+        items.append((file_id, name))
+
+    return sorted(items, key=lambda pair: (0 if _is_likely_tz_name(pair[1]) else 1, pair[1].lower()))
+
+
+def _mos_portal_download_file(session: requests.Session, file_id: int) -> tuple[bytes, str]:
+    url = "https://zakupki.mos.ru/newapi/api/FileStorage/Download"
+    response = session.get(url, timeout=60, allow_redirects=True, params={"id": file_id})
+    response.raise_for_status()
+    content_type = (response.headers.get("content-type") or "").lower()
+    if "text/html" in content_type:
+        raise RuntimeError("html_instead_of_file")
+    return response.content, content_type
+
+
+def _extract_text_from_bytes(name: str, data: bytes, content_type: str) -> str:
+    suffix = Path(name).suffix.lower()
+    if suffix == ".txt" or "text/plain" in content_type:
+        return data.decode("utf-8", errors="ignore")
+    if suffix == ".docx":
+        return _extract_docx_text_from_bytes(data)
+    if suffix == ".pdf" or "pdf" in content_type:
+        return _extract_pdf_text_from_bytes(data)
+    return ""
+
+
+def _extract_docx_text_from_bytes(data: bytes) -> str:
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            xml = zf.read("word/document.xml")
+        root = ET.fromstring(xml)
+    except Exception:
+        return ""
+    return "".join((node.text or "") for node in root.iter() if node.text)
+
+
+def _extract_pdf_text_from_bytes(data: bytes) -> str:
+    try:
+        from pypdf import PdfReader
+    except Exception:
+        return ""
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        return "\n".join((page.extract_text() or "") for page in reader.pages)
+    except Exception:
+        return ""
 
 
 def extract_text_from_attachment(path: Path) -> str:
