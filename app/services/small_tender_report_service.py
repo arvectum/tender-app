@@ -401,8 +401,18 @@ def _extract_tz_from_mos_portal_endpoint(purchase_id: str) -> AttachmentExtracti
     session.trust_env = False
     session.headers.update({"User-Agent": "Mozilla/5.0", "Accept": "*/*"})
 
-    files = _mos_portal_auction_files(session, purchase_id)
+    endpoint_payloads = _mos_portal_fetch_payloads(session, purchase_id)
+    files = _mos_portal_files_from_payloads(endpoint_payloads)
     if not files:
+        payload_text = _mos_portal_payload_tz_text(endpoint_payloads)
+        if payload_text:
+            return AttachmentExtractionResult(
+                purchase_external_id=purchase_id,
+                source_path="mos_portal_api_payload",
+                status="ok",
+                reason=None,
+                text=payload_text,
+            )
         return AttachmentExtractionResult(
             purchase_external_id=purchase_id,
             source_path="",
@@ -454,12 +464,13 @@ def _is_likely_tz_name(name: str) -> bool:
     return bool(re.search(r"(тз|техническ|задани|spec|специф|описани)", lower))
 
 
-def _mos_portal_auction_files(session: requests.Session, auction_id: str) -> list[tuple[int, str]]:
+def _mos_portal_fetch_payloads(session: requests.Session, auction_id: str) -> list[tuple[str, dict[str, object]]]:
     endpoints: tuple[tuple[str, str], ...] = (
         ("https://zakupki.mos.ru/newapi/api/Auction/Get", "auctionId"),
         ("https://zakupki.mos.ru/newapi/api/Purchase/Get", "purchaseId"),
         ("https://zakupki.mos.ru/newapi/api/Need/Get", "needId"),
     )
+    payloads: list[tuple[str, dict[str, object]]] = []
 
     for url, param_name in endpoints:
         try:
@@ -472,7 +483,13 @@ def _mos_portal_auction_files(session: requests.Session, auction_id: str) -> lis
             payload = response.json()
         except Exception:
             continue
+        payloads.append((url, payload))
 
+    return payloads
+
+
+def _mos_portal_files_from_payloads(payloads: list[tuple[str, dict[str, object]]]) -> list[tuple[int, str]]:
+    for _, payload in payloads:
         files = payload.get("files") or []
         items: list[tuple[int, str]] = []
         seen: set[int] = set()
@@ -491,6 +508,31 @@ def _mos_portal_auction_files(session: requests.Session, auction_id: str) -> lis
             return sorted(items, key=lambda pair: (0 if _is_likely_tz_name(pair[1]) else 1, pair[1].lower()))
 
     return []
+
+
+def _mos_portal_payload_tz_text(payloads: list[tuple[str, dict[str, object]]]) -> str:
+    for _, payload in reversed(payloads):
+        if not isinstance(payload, dict):
+            continue
+        parts: list[str] = []
+        for key in ("name", "description", "itemDescription"):
+            value = payload.get(key)
+            if isinstance(value, str):
+                parts.append(value)
+
+        for entry in payload.get("items") or []:
+            if not isinstance(entry, dict):
+                continue
+            for key in ("name", "description", "itemDescription"):
+                value = entry.get(key)
+                if isinstance(value, str):
+                    parts.append(value)
+
+        cleaned = _clean_text("\n".join(parts))
+        if cleaned:
+            return cleaned
+
+    return ""
 
 
 def _mos_portal_download_file(session: requests.Session, file_id: int) -> tuple[bytes, str]:
