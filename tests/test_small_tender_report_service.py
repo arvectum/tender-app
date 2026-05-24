@@ -482,6 +482,58 @@ def test_generate_small_tender_report_mos_portal_signature_match_with_noisy_tz(t
     assert rows[0]["decision_status"] == "green"
 
 
+def test_generate_small_tender_report_mos_portal_uses_tender_price_as_search_price_fallback(tmp_path: Path) -> None:
+    market_csv = tmp_path / "market.csv"
+    ref_csv = tmp_path / "tender_ref.csv"
+    manifest_csv = tmp_path / "manifest.csv"
+    tz_txt = tmp_path / "tz.txt"
+
+    _write_csv(
+        market_csv,
+        [
+            {
+                "purchase_external_id": "10208353",
+                "source": "mos_portal",
+                "purchase_url": "https://zakupki.mos.ru/auction/10208353",
+                "item_name": "Коммутатор Huawei S5735S-24T4X",
+                "offer_title": "Коммутатор Huawei S5735S 24T4X",
+                "market_unit_price": "",
+                "tender_unit_price_ref": "2790.0",
+                "offer_source_url": "https://zakupki.mos.ru/auction/10208353",
+            }
+        ],
+    )
+    _write_csv(ref_csv, [{"purchase_external_id": "10208353", "unit_price": "3000"}])
+    tz_txt.write_text("Техническое задание: коммутатор Huawei S5735S-24T4X, 24 порта.", encoding="utf-8")
+    _write_csv(
+        manifest_csv,
+        [{"purchase_external_id": "10208353", "attachment_path": str(tz_txt)}],
+    )
+
+    out_csv = tmp_path / "report.csv"
+    out_xlsx = tmp_path / "report.xlsx"
+    diag_csv = tmp_path / "diag.csv"
+
+    generate_small_tender_report(
+        market_csv=market_csv,
+        tender_ref_csv=ref_csv,
+        out_csv=out_csv,
+        out_xlsx=out_xlsx,
+        diagnostics_csv=diag_csv,
+        attachments_manifest_csv=manifest_csv,
+    )
+
+    with out_csv.open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    assert rows[0]["tz_match_type"] == "full"
+    assert rows[0]["market_unit_price"] == "2790.0"
+    assert rows[0]["found_offer_unit_price"] == "2790.0"
+    assert rows[0]["market_price_source_note"] == "from_input_mos_portal_fallback"
+    assert rows[0]["decision_status"] in {"green", "high_risk"}
+    assert rows[0]["decision_reason"] != "missing_search_price"
+
+
 def test_generate_small_tender_report_mos_portal_signature_mismatch_reject(tmp_path: Path) -> None:
     market_csv = tmp_path / "market.csv"
     ref_csv = tmp_path / "tender_ref.csv"

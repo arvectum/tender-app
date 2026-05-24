@@ -104,6 +104,30 @@ def generate_small_tender_report(
         )
         market_price_source_note = "from_input"
         market_price_source_domain = _extract_domain(offer_source_url)
+        is_mos_portal = _is_mos_portal_row(row)
+
+        if is_mos_portal and (market_unit_price is None or found_offer_unit_price is None):
+            fallback_mos_price = _pick_first_price(
+                row,
+                [
+                    "market_unit_price",
+                    "found_offer_unit_price",
+                    "effective_unit_price",
+                    "offered_unit_price",
+                    "unit_price",
+                    "market_price",
+                    "min_price",
+                    "final_price",
+                    "price",
+                    "tender_unit_price_ref",
+                ],
+            )
+            if fallback_mos_price is not None:
+                if market_unit_price is None:
+                    market_unit_price = fallback_mos_price
+                if found_offer_unit_price is None:
+                    found_offer_unit_price = fallback_mos_price
+                market_price_source_note = "from_input_mos_portal_fallback"
 
         if _is_non_goods_item(item_name):
             excluded_non_goods_count += 1
@@ -138,6 +162,28 @@ def generate_small_tender_report(
                 found_offer_unit_price = None
             market_price_source_note = "invalid_market_source_domain"
 
+        if is_mos_portal and (market_unit_price is None or found_offer_unit_price is None):
+            fallback_mos_price = _pick_first_price(
+                row,
+                [
+                    "market_unit_price",
+                    "found_offer_unit_price",
+                    "effective_unit_price",
+                    "offered_unit_price",
+                    "unit_price",
+                    "market_price",
+                    "min_price",
+                    "final_price",
+                    "price",
+                    "tender_unit_price_ref",
+                ],
+            )
+            if fallback_mos_price is not None:
+                if market_unit_price is None:
+                    market_unit_price = fallback_mos_price
+                if found_offer_unit_price is None:
+                    found_offer_unit_price = fallback_mos_price
+                market_price_source_note = "from_input_mos_portal_fallback"
         extraction = extraction_by_purchase.get(purchase_id)
         if extraction is None or extraction.status != "ok":
             if _is_mos_portal_row(row):
@@ -164,7 +210,6 @@ def generate_small_tender_report(
         title_tokens = _tokenize(offer_title)
         all_offer_tokens = item_tokens | title_tokens
 
-        is_mos_portal = _is_mos_portal_row(row)
         if is_mos_portal:
             strict_full_match = _is_mos_portal_strict_attribute_match(
                 tz_text=tz_text,
