@@ -104,6 +104,7 @@ def generate_small_tender_report(
         )
         market_price_source_note = "from_input"
         market_price_source_domain = _extract_domain(offer_source_url)
+        market_source_domain_blocked = False
         is_mos_portal = _is_mos_portal_row(row)
 
         if is_mos_portal and (market_unit_price is None or found_offer_unit_price is None):
@@ -160,9 +161,10 @@ def generate_small_tender_report(
                 and found_offer_unit_price == original_market_unit_price
             ):
                 found_offer_unit_price = None
-            market_price_source_note = "invalid_market_source_domain"
+            market_source_domain_blocked = True
+            market_price_source_note = "invalid_market_source_domain/procurement_domain_blocked"
 
-        if is_mos_portal and (market_unit_price is None or found_offer_unit_price is None):
+        if is_mos_portal and not market_source_domain_blocked and (market_unit_price is None or found_offer_unit_price is None):
             fallback_mos_price = _pick_first_price(
                 row,
                 [
@@ -803,7 +805,22 @@ def _extract_domain(url: str) -> str:
 
 def _is_invalid_market_source_domain(domain: str) -> bool:
     normalized = (domain or "").strip().lower()
-    return normalized == "zakupki.mos.ru" or normalized.endswith(".zakupki.mos.ru")
+    if not normalized:
+        return False
+
+    blocked_domains = (
+        "zakupki.mos.ru",
+        "market.mosreg.ru",
+        "business.roseltorg.ru",
+        "roseltorg.ru",
+        "rts-tender.ru",
+        "sberbank-ast.ru",
+        "etp-ets.ru",
+        "tektorg.ru",
+        "goszakupki.gov.ru",
+        "zakupki.gov.ru",
+    )
+    return any(normalized == d or normalized.endswith(f".{d}") for d in blocked_domains)
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
