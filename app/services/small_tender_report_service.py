@@ -164,9 +164,17 @@ def generate_small_tender_report(
         title_tokens = _tokenize(offer_title)
         all_offer_tokens = item_tokens | title_tokens
 
-        strict_full_match = _is_strict_attribute_match(tz_text=tz_text, offer_text=f"{item_name} {offer_title}") or (
-            bool(tz_tokens) and tz_tokens.issubset(all_offer_tokens)
-        )
+        is_mos_portal = _is_mos_portal_row(row)
+        if is_mos_portal:
+            strict_full_match = _is_mos_portal_strict_attribute_match(
+                tz_text=tz_text,
+                item_name=item_name,
+                offer_title=offer_title,
+            )
+        else:
+            strict_full_match = _is_strict_attribute_match(tz_text=tz_text, offer_text=f"{item_name} {offer_title}") or (
+                bool(tz_tokens) and tz_tokens.issubset(all_offer_tokens)
+            )
         overlap = (len(tz_tokens & all_offer_tokens) / len(tz_tokens)) if tz_tokens else 0.0
         fallback_non_product_match = False
         if not strict_full_match and _is_non_product_tz_text(tz_text):
@@ -595,6 +603,68 @@ def _is_strict_attribute_match(*, tz_text: str, offer_text: str) -> bool:
         return False
 
     return bool(tz_models or long_tz_numbers or (tz_units and tz_numbers))
+
+
+def _is_mos_portal_strict_attribute_match(*, tz_text: str, item_name: str, offer_title: str) -> bool:
+    tz_norm = _normalize_ru_text(tz_text)
+    offer_text = f"{item_name} {offer_title}".strip()
+    offer_norm = _normalize_ru_text(offer_text)
+    if not tz_norm or not offer_norm:
+        return False
+
+    tz_compact = re.sub(r"[^a-zа-я0-9]+", "", tz_norm)
+    tz_numbers = _extract_numbers(tz_norm)
+
+    offer_models = _extract_model_tokens(offer_text)
+    normalized_offer_models = {re.sub(r"[^a-zа-я0-9]+", "", model) for model in offer_models}
+    normalized_offer_models = {m for m in normalized_offer_models if m}
+    matched_models = {model for model in normalized_offer_models if model in tz_compact}
+    if normalized_offer_models and matched_models != normalized_offer_models:
+        return False
+
+    offer_long_numbers = {n for n in _extract_numbers(offer_norm) if len(n) >= 5}
+    matched_long_numbers = offer_long_numbers & tz_numbers
+    if offer_long_numbers and not matched_long_numbers:
+        return False
+
+    offer_brands = _extract_brand_tokens(offer_norm)
+    if offer_brands and not any(brand in tz_norm for brand in offer_brands):
+        return False
+
+    return bool(normalized_offer_models or (offer_brands and matched_long_numbers))
+
+
+def _extract_brand_tokens(text: str) -> set[str]:
+    known_brands = {
+        "huawei",
+        "hewlett",
+        "packard",
+        "dell",
+        "lenovo",
+        "cisco",
+        "mikrotik",
+        "zyxel",
+        "canon",
+        "xerox",
+        "kyocera",
+        "brother",
+        "epson",
+        "ricoh",
+        "samsung",
+        "apple",
+        "asus",
+        "acer",
+        "intel",
+        "amd",
+        "nvidia",
+        "hp",
+        "lg",
+    }
+    tokens = set(text.split())
+    matched = {token for token in tokens if token in known_brands}
+    if "tp" in tokens and "link" in tokens:
+        matched.update({"tp", "link"})
+    return matched
 
 
 def _is_non_product_tz_text(text: str) -> bool:
