@@ -37,6 +37,7 @@ def generate_small_tender_report(
 ) -> dict[str, int]:
     market_rows = _read_csv(market_csv)
     ref_rows = _read_csv(tender_ref_csv)
+    vendor_candidate_by_purchase = _build_vendor_candidate_index(market_rows)
 
     ref_price_by_purchase: dict[str, float] = {}
     for row in ref_rows:
@@ -105,7 +106,10 @@ def generate_small_tender_report(
         market_price_source_note = "from_input"
         market_price_source_domain = _extract_domain(offer_source_url)
         market_source_domain_blocked = False
+        has_valid_url = bool(offer_source_url and offer_source_url.startswith(("http://", "https://")))
+        is_procurement_domain = _is_invalid_market_source_domain(market_price_source_domain)
         is_mos_portal = _is_mos_portal_row(row)
+        has_vendor_candidate_for_purchase = vendor_candidate_by_purchase.get(purchase_id, False)
 
         if is_mos_portal and (market_unit_price is None or found_offer_unit_price is None):
             fallback_mos_price = _pick_first_price(
@@ -152,7 +156,7 @@ def generate_small_tender_report(
             )
             continue
 
-        if _is_invalid_market_source_domain(market_price_source_domain):
+        if is_procurement_domain:
             original_market_unit_price = market_unit_price
             market_unit_price = None
             if (
@@ -162,7 +166,10 @@ def generate_small_tender_report(
             ):
                 found_offer_unit_price = None
             market_source_domain_blocked = True
-            market_price_source_note = "invalid_market_source_domain/procurement_domain_blocked"
+            if has_vendor_candidate_for_purchase:
+                market_price_source_note = "procurement_domain_blocked/vendor_candidate_preferred"
+            else:
+                market_price_source_note = "invalid_market_source_domain/procurement_domain_blocked"
 
         if is_mos_portal and not market_source_domain_blocked and (market_unit_price is None or found_offer_unit_price is None):
             fallback_mos_price = _pick_first_price(
@@ -227,10 +234,18 @@ def generate_small_tender_report(
         if not strict_full_match and _is_non_product_tz_text(tz_text):
             fallback_non_product_match = bool(item_tokens or title_tokens)
 
+        has_valid_search_price = market_unit_price is not None and found_offer_unit_price is not None
+        full_match_vendor_eligible = (
+            (strict_full_match or fallback_non_product_match)
+            and not is_procurement_domain
+            and has_valid_search_price
+            and (has_valid_url or not is_mos_portal)
+        )
+
         match_type = "none"
-        if strict_full_match or fallback_non_product_match:
+        if full_match_vendor_eligible:
             match_type = "full"
-        elif overlap >= 0.5:
+        elif strict_full_match or fallback_non_product_match or overlap >= 0.5:
             match_type = "partial"
 
         tender_ref_price = ref_price_by_purchase.get(purchase_id)
@@ -248,7 +263,14 @@ def generate_small_tender_report(
             risk_level = "critical"
         elif match_type != "full":
             decision_status = "reject"
-            decision_reason = f"strict_full_match_required:{match_type}"
+            if is_procurement_domain:
+                decision_reason = "procurement_domain_blocked"
+            elif is_mos_portal and not has_valid_url:
+                decision_reason = "missing_or_invalid_offer_source_url"
+            elif not has_valid_search_price:
+                decision_reason = "missing_search_price"
+            else:
+                decision_reason = f"strict_full_match_required:{match_type}"
             risk_level = "critical"
         elif market_unit_price is None or found_offer_unit_price is None:
             decision_status = "reject"
@@ -288,6 +310,13 @@ def generate_small_tender_report(
                 "market_price_source_url": offer_source_url,
                 "market_price_source_domain": market_price_source_domain,
                 "market_price_source_note": market_price_source_note,
+                "source_selection_reason": _source_selection_reason(
+                    is_procurement_domain=is_procurement_domain,
+                    has_vendor_candidate_for_purchase=has_vendor_candidate_for_purchase,
+                    has_valid_url=has_valid_url,
+                    has_valid_search_price=has_valid_search_price,
+                    strict_full_match=strict_full_match,
+                ),
                 "margin_pct": margin_pct,
                 "decision_status": decision_status,
                 "risk_level": risk_level,
@@ -308,6 +337,13 @@ def generate_small_tender_report(
                 "market_price_source_url": offer_source_url,
                 "market_price_source_domain": market_price_source_domain,
                 "market_price_source_note": market_price_source_note,
+                "source_selection_reason": _source_selection_reason(
+                    is_procurement_domain=is_procurement_domain,
+                    has_vendor_candidate_for_purchase=has_vendor_candidate_for_purchase,
+                    has_valid_url=has_valid_url,
+                    has_valid_search_price=has_valid_search_price,
+                    strict_full_match=strict_full_match,
+                ),
                 "margin_pct": margin_pct,
                 "decision_status": decision_status,
                 "decision_reason": decision_reason,
@@ -821,6 +857,58 @@ def _is_invalid_market_source_domain(domain: str) -> bool:
         "zakupki.gov.ru",
     )
     return any(normalized == d or normalized.endswith(f".{d}") for d in blocked_domains)
+
+
+def _build_vendor_candidate_index(rows: list[dict[str, str]]) -> dict[str, bool]:
+    result: dict[str, bool] = {}
+    for row in rows:
+        purchase_id = str(row.get("purchase_external_id", "")).strip()
+        if not purchase_id:
+            continue
+        url = str(row.get("offer_source_url", "")).strip()
+        domain = _extract_domain(url)
+        has_valid_url = bool(url and url.startswith(("http://", "https://")))
+        price = _pick_first_price(
+            row,
+            [
+                "market_unit_price",
+                "found_offer_unit_price",
+                "offered_unit_price",
+                "unit_price",
+                "effective_unit_price",
+                "market_price",
+                "min_price",
+                "final_price",
+                "price",
+            ],
+        )
+        is_vendor_candidate = has_valid_url and not _is_invalid_market_source_domain(domain) and price is not None
+        if is_vendor_candidate:
+            result[purchase_id] = True
+        else:
+            result.setdefault(purchase_id, False)
+    return result
+
+
+def _source_selection_reason(
+    *,
+    is_procurement_domain: bool,
+    has_vendor_candidate_for_purchase: bool,
+    has_valid_url: bool,
+    has_valid_search_price: bool,
+    strict_full_match: bool,
+) -> str:
+    if is_procurement_domain and has_vendor_candidate_for_purchase:
+        return "rejected_procurement_domain_vendor_available"
+    if is_procurement_domain:
+        return "rejected_procurement_domain_no_vendor_candidate"
+    if not has_valid_url:
+        return "rejected_missing_or_invalid_offer_source_url"
+    if not has_valid_search_price:
+        return "rejected_missing_search_price"
+    if not strict_full_match:
+        return "rejected_non_strict_match"
+    return "selected_vendor_candidate"
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:
