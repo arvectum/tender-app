@@ -855,6 +855,8 @@ def _is_invalid_market_source_domain(domain: str) -> bool:
         "tektorg.ru",
         "goszakupki.gov.ru",
         "zakupki.gov.ru",
+        "zakupki360.ru",
+        "zakupki360.com",
     )
     return any(normalized == d or normalized.endswith(f".{d}") for d in blocked_domains)
 

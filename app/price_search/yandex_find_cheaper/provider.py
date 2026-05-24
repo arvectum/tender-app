@@ -34,8 +34,6 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                     continue
                 seen_urls.add(dedup_key)
                 rows.append(row)
-            if rows:
-                break
 
         candidates: list[MarketOfferCandidate] = []
         for row in rows:
@@ -95,5 +93,7 @@ def _is_procurement_domain_url(url: str) -> bool:
         "tektorg.ru",
         "goszakupki.gov.ru",
         "zakupki.gov.ru",
+        "zakupki360.ru",
+        "zakupki360.com",
     )
     return any(hostname == domain or hostname.endswith(f".{domain}") for domain in blocked)

@@ -21,6 +21,8 @@ PROCUREMENT_DOMAINS = (
     "tektorg.ru",
     "goszakupki.gov.ru",
     "zakupki.gov.ru",
+    "zakupki360.ru",
+    "zakupki360.com",
 )
 
 

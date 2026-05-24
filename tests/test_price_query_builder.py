@@ -46,6 +46,7 @@ def test_build_query_adds_procurement_domain_exclusions() -> None:
     assert "-site:zakupki.mos.ru" in lowered
     assert "-site:market.mosreg.ru" in lowered
     assert "-site:roseltorg.ru" in lowered
+    assert "-site:zakupki360.ru" in lowered
 
 
 def test_build_search_queries_returns_multiple_variants_with_exclusions() -> None:

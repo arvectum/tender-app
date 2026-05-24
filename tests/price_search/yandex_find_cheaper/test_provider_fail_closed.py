@@ -27,7 +27,12 @@ class _FakeAgentWithProcurementRows:
                 "title": "Лот на маркетплейсе закупок",
                 "url": "https://market.mosreg.ru/Trade/ViewTrade?id=1",
                 "unit_price": "1000",
-            }
+            },
+            {
+                "title": "Лот на агрегаторе закупок",
+                "url": "https://zakupki360.ru/tender/123",
+                "unit_price": "900",
+            },
         ], []
 
 
