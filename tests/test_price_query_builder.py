@@ -37,3 +37,12 @@ def test_build_query_keeps_brand_contains_region_and_excludes_purchase_qty() -> 
     assert "hp" in lowered
     assert "москва" in lowered
     assert "10 шт" not in lowered
+
+
+def test_build_query_adds_procurement_domain_exclusions() -> None:
+    item = _make_item("Поставка картриджа HP 305A CE410A")
+    query = build_search_query(item)
+    lowered = query.lower()
+    assert "-site:zakupki.mos.ru" in lowered
+    assert "-site:market.mosreg.ru" in lowered
+    assert "-site:roseltorg.ru" in lowered

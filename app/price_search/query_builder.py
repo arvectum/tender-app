@@ -10,6 +10,19 @@ from app.price_search.normalization import normalize_title
 
 NOISE_WORDS = {"поставка", "закупка", "закупки", "нмц", "для"}
 
+PROCUREMENT_DOMAINS = (
+    "zakupki.mos.ru",
+    "market.mosreg.ru",
+    "business.roseltorg.ru",
+    "roseltorg.ru",
+    "rts-tender.ru",
+    "sberbank-ast.ru",
+    "etp-ets.ru",
+    "tektorg.ru",
+    "goszakupki.gov.ru",
+    "zakupki.gov.ru",
+)
+
 
 def build_search_query(item: PurchaseItem) -> str:
     settings = get_settings()
@@ -38,7 +51,8 @@ def build_search_query(item: PurchaseItem) -> str:
     base_parts.extend(tail_tokens)
 
     extra_words = [word.strip() for word in settings.price_search_extra_words if word.strip()]
-    parts = _unique_preserve([p for p in base_parts if p] + extra_words + [settings.price_search_region])
+    exclusion_parts = [f"-site:{domain}" for domain in PROCUREMENT_DOMAINS]
+    parts = _unique_preserve([p for p in base_parts if p] + extra_words + [settings.price_search_region] + exclusion_parts)
     query = " ".join(parts)
     query = re.sub(r"\s+", " ", query).strip()
     return query

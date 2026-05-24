@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from urllib.parse import urlparse
 
 from app.config import get_settings
 from app.models import PurchaseItem
@@ -27,6 +28,9 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             unit_price = row.get("unit_price")
             if unit_price is None:
                 continue
+            offer_url = normalize_url(str(row.get("url") or ""))
+            if _is_procurement_domain_url(offer_url):
+                continue
 
             quantity, quantity_flags = normalize_quantity(row.get("available_quantity"))
             delivery_price, delivery_flags = normalize_delivery_price(row.get("delivery_price"))
@@ -36,7 +40,7 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                 provider=self.provider_name,
                 purchase_item_id=item.id,
                 title=str(row.get("title") or item.item_name),
-                url=normalize_url(str(row.get("url") or "")),
+                url=offer_url,
                 seller_name=row.get("seller_name") or None,
                 region=region,
                 unit_price=Decimal(str(unit_price)),
@@ -60,3 +64,22 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             return []
 
         return candidates
+
+
+def _is_procurement_domain_url(url: str) -> bool:
+    hostname = (urlparse(url).hostname or "").lower()
+    if not hostname:
+        return False
+    blocked = (
+        "zakupki.mos.ru",
+        "market.mosreg.ru",
+        "business.roseltorg.ru",
+        "roseltorg.ru",
+        "rts-tender.ru",
+        "sberbank-ast.ru",
+        "etp-ets.ru",
+        "tektorg.ru",
+        "goszakupki.gov.ru",
+        "zakupki.gov.ru",
+    )
+    return any(hostname == domain or hostname.endswith(f".{domain}") for domain in blocked)
