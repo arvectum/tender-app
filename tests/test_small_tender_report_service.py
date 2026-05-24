@@ -720,9 +720,13 @@ def test_generate_small_tender_report_mos_portal_blocks_procurement_domains_and_
 
     assert procurement_row["market_unit_price"] == ""
     assert procurement_row["found_offer_unit_price"] == ""
-    assert procurement_row["market_price_source_note"] == "invalid_market_source_domain/procurement_domain_blocked"
+    assert procurement_row["market_price_source_note"] == "procurement_domain_blocked/vendor_candidate_preferred"
+    assert procurement_row["source_selection_reason"] == "rejected_procurement_domain_vendor_available"
+    assert procurement_row["tz_match_type"] != "full"
     assert procurement_row["decision_status"] == "reject"
-    assert procurement_row["decision_reason"] == "missing_search_price"
+    assert procurement_row["decision_reason"] == "procurement_domain_blocked"
 
+    assert vendor_row["source_selection_reason"] == "selected_vendor_candidate"
     assert vendor_row["market_unit_price"] == "90.0"
+    assert vendor_row["tz_match_type"] == "full"
     assert vendor_row["decision_status"] == "green"
