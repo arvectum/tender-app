@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from app.models import PurchaseItem
-from app.price_search.query_builder import build_search_query
+from app.price_search.query_builder import build_search_queries, build_search_query
 
 
 def _make_item(name: str, description: str | None = None) -> PurchaseItem:
@@ -46,3 +46,13 @@ def test_build_query_adds_procurement_domain_exclusions() -> None:
     assert "-site:zakupki.mos.ru" in lowered
     assert "-site:market.mosreg.ru" in lowered
     assert "-site:roseltorg.ru" in lowered
+
+
+def test_build_search_queries_returns_multiple_variants_with_exclusions() -> None:
+    item = _make_item("Поставка картриджа HP 305A CE410A", description="для закупки 10 шт")
+    queries = build_search_queries(item)
+    assert len(queries) >= 2
+    for query in queries:
+        lowered = query.lower()
+        assert "-site:zakupki.mos.ru" in lowered
+        assert "-site:market.mosreg.ru" in lowered

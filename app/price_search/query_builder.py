@@ -25,6 +25,11 @@ PROCUREMENT_DOMAINS = (
 
 
 def build_search_query(item: PurchaseItem) -> str:
+    queries = build_search_queries(item)
+    return queries[0] if queries else ""
+
+
+def build_search_queries(item: PurchaseItem) -> list[str]:
     settings = get_settings()
     attrs = item.attributes if hasattr(item, "attributes") and item.attributes is not None else extract_item_attributes(item)
 
@@ -50,12 +55,36 @@ def build_search_query(item: PurchaseItem) -> str:
     tail_tokens = _fallback_tokens(item)
     base_parts.extend(tail_tokens)
 
+    fallback_tokens = _fallback_tokens(item)
+    head_tokens = [token for token in [attrs.brand, attrs.article, attrs.model, attrs.color] if token]
+    category_token = _category_token(attrs.category)
+    if category_token:
+        head_tokens.append(category_token)
+
     extra_words = [word.strip() for word in settings.price_search_extra_words if word.strip()]
     exclusion_parts = [f"-site:{domain}" for domain in PROCUREMENT_DOMAINS]
-    parts = _unique_preserve([p for p in base_parts if p] + extra_words + [settings.price_search_region] + exclusion_parts)
+
+    primary = _compose_query(base_parts, extra_words, settings.price_search_region, exclusion_parts)
+    compact = _compose_query(head_tokens + fallback_tokens[:4], [], settings.price_search_region, exclusion_parts)
+    fallback = _compose_query(fallback_tokens, [], settings.price_search_region, exclusion_parts)
+
+    return _unique_preserve([q for q in [primary, compact, fallback] if q])
+
+
+def _category_token(category: str | None) -> str | None:
+    if category == "cartridges":
+        return "картридж"
+    if category == "paper":
+        return "бумага"
+    if category == "furniture":
+        return "мебель"
+    return None
+
+
+def _compose_query(core_parts: list[str], extra_words: list[str], region: str, exclusion_parts: list[str]) -> str:
+    parts = _unique_preserve([p for p in core_parts if p] + extra_words + [region] + exclusion_parts)
     query = " ".join(parts)
-    query = re.sub(r"\s+", " ", query).strip()
-    return query
+    return re.sub(r"\s+", " ", query).strip()
 
 
 def _fallback_tokens(item: PurchaseItem) -> list[str]:

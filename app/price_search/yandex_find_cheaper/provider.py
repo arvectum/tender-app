@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.models import PurchaseItem
 from app.price_search.base import MarketOfferCandidate, PriceSearchProvider
 from app.price_search.normalization import normalize_delivery_price, normalize_quantity, normalize_region, normalize_url
-from app.price_search.query_builder import build_search_query
+from app.price_search.query_builder import build_search_queries
 from app.price_search.relevance import calculate_offer_relevance
 from app.price_search.yandex_find_cheaper.browser_agent import YandexBrowserAgent
 
@@ -20,8 +20,22 @@ class YandexFindCheaperProvider(PriceSearchProvider):
         self.settings = get_settings()
 
     def search_offers(self, item: PurchaseItem) -> list[MarketOfferCandidate]:
-        query = build_search_query(item)
-        rows, warnings = self.agent.search(query=query, limit=10)
+        queries = build_search_queries(item)
+        warnings: list[str] = []
+        rows: list[dict] = []
+        seen_urls: set[str] = set()
+        for query in queries:
+            batch_rows, batch_warnings = self.agent.search(query=query, limit=10)
+            warnings.extend(batch_warnings)
+            for row in batch_rows:
+                norm_url = normalize_url(str(row.get("url") or ""))
+                dedup_key = norm_url or f"{row.get('title') or ''}|{row.get('unit_price') or ''}"
+                if dedup_key in seen_urls:
+                    continue
+                seen_urls.add(dedup_key)
+                rows.append(row)
+            if rows:
+                break
 
         candidates: list[MarketOfferCandidate] = []
         for row in rows:
