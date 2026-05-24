@@ -382,6 +382,8 @@ def test_generate_small_tender_report_mos_portal_endpoint_fallback(tmp_path: Pat
 
         def get(self, url: str, **kwargs):
             if "Auction/Get" in url:
+                return _FakeResponse(404)
+            if "Need/Get" in url:
                 return _FakeResponse(
                     200,
                     json_payload={

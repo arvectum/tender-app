@@ -455,33 +455,42 @@ def _is_likely_tz_name(name: str) -> bool:
 
 
 def _mos_portal_auction_files(session: requests.Session, auction_id: str) -> list[tuple[int, str]]:
-    url = "https://zakupki.mos.ru/newapi/api/Auction/Get"
-    try:
-        response = session.get(url, params={"auctionId": auction_id}, timeout=60)
-    except Exception:
-        return []
-    if response.status_code != 200:
-        return []
-    try:
-        payload = response.json()
-    except Exception:
-        return []
+    endpoints: tuple[tuple[str, str], ...] = (
+        ("https://zakupki.mos.ru/newapi/api/Auction/Get", "auctionId"),
+        ("https://zakupki.mos.ru/newapi/api/Purchase/Get", "purchaseId"),
+        ("https://zakupki.mos.ru/newapi/api/Need/Get", "needId"),
+    )
 
-    files = payload.get("files") or []
-    items: list[tuple[int, str]] = []
-    seen: set[int] = set()
-    for entry in files:
+    for url, param_name in endpoints:
         try:
-            file_id = int(entry.get("id"))
+            response = session.get(url, params={param_name: auction_id}, timeout=60)
         except Exception:
             continue
-        if file_id in seen:
+        if response.status_code != 200:
             continue
-        seen.add(file_id)
-        name = str(entry.get("name") or entry.get("fileName") or f"Download_{file_id}")
-        items.append((file_id, name))
+        try:
+            payload = response.json()
+        except Exception:
+            continue
 
-    return sorted(items, key=lambda pair: (0 if _is_likely_tz_name(pair[1]) else 1, pair[1].lower()))
+        files = payload.get("files") or []
+        items: list[tuple[int, str]] = []
+        seen: set[int] = set()
+        for entry in files:
+            try:
+                file_id = int(entry.get("id"))
+            except Exception:
+                continue
+            if file_id in seen:
+                continue
+            seen.add(file_id)
+            name = str(entry.get("name") or entry.get("fileName") or f"Download_{file_id}")
+            items.append((file_id, name))
+
+        if items:
+            return sorted(items, key=lambda pair: (0 if _is_likely_tz_name(pair[1]) else 1, pair[1].lower()))
+
+    return []
 
 
 def _mos_portal_download_file(session: requests.Session, file_id: int) -> tuple[bytes, str]:
