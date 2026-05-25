@@ -78,6 +78,16 @@ _JUNK_URL_PATTERNS: tuple[str, ...] = (
     "utm_source=yandex",
 )
 
+_BLOCK_MARKERS: tuple[str, ...] = (
+    "капча",
+    "captcha",
+    "доступ ограничен",
+    "подозрительный трафик",
+    "unusual traffic",
+    "робот",
+    "robot",
+)
+
 _CYR_LAT_CONFUSABLES = str.maketrans(
     {
         "a": "а",
@@ -136,107 +146,140 @@ class YandexBrowserAgent:
             warnings.append(f"playwright unavailable: {exc}")
             return [], warnings
 
-        normalized_query = quote_plus(str(query or "").strip())
-        url = f"https://yandex.ru/search/?text={normalized_query}"
-        decision = self.proxy_router.decide(url)
+        endpoint_plan = _build_yandex_endpoint_plan(query)
 
         try:
             with sync_playwright() as p:
-                launch_kwargs: dict[str, Any] = {"headless": True}
-                if decision.use_proxy and decision.proxy_url:
-                    launch_kwargs["proxy"] = {"server": decision.proxy_url}
+                for endpoint_name, url in endpoint_plan:
+                    decision = self.proxy_router.decide(url)
+                    launch_kwargs: dict[str, Any] = {"headless": True}
+                    if decision.use_proxy and decision.proxy_url:
+                        launch_kwargs["proxy"] = {"server": decision.proxy_url}
 
-                browser = p.chromium.launch(**launch_kwargs)
-                context = browser.new_context(user_agent=self.settings.connector_user_agent)
-                page = context.new_page()
-                page.goto(url, wait_until="domcontentloaded", timeout=int(self.settings.connector_request_timeout_seconds * 1000))
+                    browser = p.chromium.launch(**launch_kwargs)
+                    context = browser.new_context(user_agent=self.settings.connector_user_agent)
+                    page = context.new_page()
 
-                page_text = (page.inner_text("body") or "").lower()
-                if "капча" in page_text or "captcha" in page_text:
-                    warnings.append("captcha_or_blocked")
-                    context.close()
-                    browser.close()
-                    return [], warnings
+                    try:
+                        page.goto(
+                            url,
+                            wait_until="domcontentloaded",
+                            timeout=int(self.settings.connector_request_timeout_seconds * 1000),
+                        )
+                        page_text = (page.inner_text("body") or "").lower()
+                        if _is_blocked_response(page_text):
+                            warnings.append(f"captcha_or_blocked:{endpoint_name}")
+                            continue
 
-                selectors_js = {
-                    "containers": list(_SERP_CONTAINER_SELECTORS),
-                    "titles": list(_TITLE_SELECTORS),
-                    "snippets": list(_SNIPPET_SELECTORS),
-                    "links": list(_LINK_SELECTORS),
-                }
-                rows = page.evaluate(
-                    r"""
-                    ({containers, titles, snippets, links}) => {
-                      const findText = (root, selectors) => {
-                        for (const sel of selectors) {
-                          const el = root.querySelector(sel);
-                          const text = (el?.innerText || el?.textContent || '').trim();
-                          if (text) return text;
-                        }
-                        return '';
-                      };
+                        rows = _extract_serp_rows(page)
+                        if not rows:
+                            warnings.append(f"empty_serp:{endpoint_name}")
+                            continue
 
-                      const findHref = (root, selectors) => {
-                        for (const sel of selectors) {
-                          const href = (root.querySelector(sel)?.href || '').trim();
-                          if (href && /^https?:\/\//i.test(href)) return href;
-                        }
-                        return '';
-                      };
+                        records: list[dict[str, Any]] = []
+                        for row in rows:
+                            title = str((row or {}).get("title") or "").strip()
+                            offer_url = str((row or {}).get("url") or "").strip()
+                            snippet = str((row or {}).get("snippet") or "").strip()
+                            if not title or not offer_url:
+                                continue
+                            if _is_junk_offer_url(offer_url):
+                                continue
+                            if not _has_relevance_signal(query_terms, title, snippet):
+                                continue
 
-                      const output = [];
-                      for (const containerSel of containers) {
-                        const nodes = Array.from(document.querySelectorAll(containerSel));
-                        for (const node of nodes) {
-                          const title = findText(node, titles);
-                          const url = findHref(node, links);
-                          const snippet = findText(node, snippets) || (node.innerText || '').trim();
-                          output.push({title, url, snippet});
-                        }
-                        if (output.length) break;
-                      }
-                      return output;
-                    }
-                    """,
-                    selectors_js,
-                )
+                            price = parse_ruble_price_from_title_and_snippet(title, snippet)
+                            relevance_score = _calculate_relevance_score(query_terms, title, snippet)
 
-                records: list[dict[str, Any]] = []
-                for row in rows:
-                    title = str((row or {}).get("title") or "").strip()
-                    offer_url = str((row or {}).get("url") or "").strip()
-                    snippet = str((row or {}).get("snippet") or "").strip()
-                    if not title or not offer_url:
-                        continue
-                    if _is_junk_offer_url(offer_url):
-                        continue
-                    if not _has_relevance_signal(query_terms, title, snippet):
-                        continue
+                            records.append(
+                                {
+                                    "title": title,
+                                    "url": offer_url,
+                                    "snippet": snippet,
+                                    "unit_price": price,
+                                    "_relevance_score": relevance_score,
+                                }
+                            )
 
-                    price = parse_ruble_price_from_title_and_snippet(title, snippet)
-                    relevance_score = _calculate_relevance_score(query_terms, title, snippet)
+                        records.sort(key=lambda r: (float(r.get("_relevance_score") or 0.0), 1 if r.get("unit_price") else 0), reverse=True)
+                        records = records[: max(0, int(limit))]
+                        for record in records:
+                            record.pop("_relevance_score", None)
 
-                    records.append(
-                        {
-                            "title": title,
-                            "url": offer_url,
-                            "snippet": snippet,
-                            "unit_price": price,
-                            "_relevance_score": relevance_score,
-                        }
-                    )
+                        if records:
+                            return records, warnings
+                        warnings.append(f"no_relevant_rows:{endpoint_name}")
+                    except Exception as exc:  # noqa: BLE001
+                        warnings.append(f"yandex_search_failed:{endpoint_name}: {exc}")
+                    finally:
+                        context.close()
+                        browser.close()
 
-                records.sort(key=lambda r: (float(r.get("_relevance_score") or 0.0), 1 if r.get("unit_price") else 0), reverse=True)
-                records = records[: max(0, int(limit))]
-                for record in records:
-                    record.pop("_relevance_score", None)
-
-                context.close()
-                browser.close()
-                return records, warnings
+                return [], warnings
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"yandex_search_failed: {exc}")
             return [], warnings
+
+
+def _build_yandex_endpoint_plan(query: str) -> tuple[tuple[str, str], ...]:
+    normalized_query = quote_plus(str(query or "").strip())
+    return (
+        ("desktop", f"https://yandex.ru/search/?text={normalized_query}"),
+        ("touch", f"https://yandex.ru/search/touch/?text={normalized_query}"),
+    )
+
+
+def _is_blocked_response(page_text: str) -> bool:
+    lowered = str(page_text or "").lower()
+    if not lowered:
+        return False
+    return any(marker in lowered for marker in _BLOCK_MARKERS)
+
+
+def _extract_serp_rows(page: Any) -> list[dict[str, Any]]:
+    selectors_js = {
+        "containers": list(_SERP_CONTAINER_SELECTORS),
+        "titles": list(_TITLE_SELECTORS),
+        "snippets": list(_SNIPPET_SELECTORS),
+        "links": list(_LINK_SELECTORS),
+    }
+    rows = page.evaluate(
+        r"""
+        ({containers, titles, snippets, links}) => {
+          const findText = (root, selectors) => {
+            for (const sel of selectors) {
+              const el = root.querySelector(sel);
+              const text = (el?.innerText || el?.textContent || '').trim();
+              if (text) return text;
+            }
+            return '';
+          };
+
+          const findHref = (root, selectors) => {
+            for (const sel of selectors) {
+              const href = (root.querySelector(sel)?.href || '').trim();
+              if (href && /^https?:\/\//i.test(href)) return href;
+            }
+            return '';
+          };
+
+          const output = [];
+          for (const containerSel of containers) {
+            const nodes = Array.from(document.querySelectorAll(containerSel));
+            for (const node of nodes) {
+              const title = findText(node, titles);
+              const url = findHref(node, links);
+              const snippet = findText(node, snippets) || (node.innerText || '').trim();
+              output.push({title, url, snippet});
+            }
+            if (output.length) break;
+          }
+          return output;
+        }
+        """,
+        selectors_js,
+    )
+    return [row for row in rows if isinstance(row, dict)]
 
 
 def _extract_query_core_terms(query: str) -> set[str]:
