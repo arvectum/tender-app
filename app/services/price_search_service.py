@@ -338,9 +338,11 @@ class PriceSearchService:
 
         if int(stage_counters.get("blocked_or_captcha") or 0) > 0:
             return "blocked_page"
+        if int(stage_counters.get("auth_or_session_missing") or 0) > 0:
+            return "auth_or_session_missing"
         if int(stage_counters.get("no_price_signal") or 0) > 0:
             return "no_price_found"
-        if int(stage_counters.get("no_relevant_rows") or 0) > 0 or int(stage_counters.get("non_serp_rescue_no_relevance") or 0) > 0:
+        if int(stage_counters.get("no_relevant_rows") or 0) > 0 or int(stage_counters.get("non_serp_rescue_no_relevance") or 0) > 0 or int(stage_counters.get("parse_empty") or 0) > 0:
             return "low_relevance"
         if (
             int(stage_counters.get("fallback_empty") or 0) > 0

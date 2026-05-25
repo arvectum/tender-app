@@ -11,6 +11,7 @@ from app.price_search.yandex_find_cheaper.browser_agent import (
     _build_yandex_endpoint_plan,
     _extract_price_from_offer_page,
     _is_blocked_response,
+    _open_browser_context,
 )
 
 
@@ -236,3 +237,42 @@ def test_search_falls_back_to_bing_after_yandex_block_and_ddg_empty(monkeypatch)
     assert "captcha_or_blocked:desktop" in warnings
     assert "empty_serp:ddg_html" in warnings
     assert "fallback_success:bing_html" in warnings
+
+
+def test_open_browser_context_prefers_cdp_session() -> None:
+    class _FakeBrowser:
+        def __init__(self) -> None:
+            self.contexts = [types.SimpleNamespace(new_page=lambda: None)]
+
+        def close(self) -> None:
+            return None
+
+    class _FakeChromium:
+        def connect_over_cdp(self, _url: str, timeout: int):
+            assert timeout >= 1000
+            return _FakeBrowser()
+
+    fake_playwright = types.SimpleNamespace(chromium=_FakeChromium())
+    settings = types.SimpleNamespace(
+        yandex_browser_use_chrome_profile=True,
+        yandex_cdp_url="http://127.0.0.1:9222",
+        connector_request_timeout_seconds=3,
+        connector_user_agent="ua",
+        playwright_headless=True,
+        yandex_chrome_user_data_dir="/tmp/chrome",
+        yandex_chrome_profile_directory="Profile 1",
+    )
+    proxy_router = types.SimpleNamespace(decide=lambda _url: types.SimpleNamespace(use_proxy=False, proxy_url=None))
+    warnings: list[str] = []
+
+    context, closable = _open_browser_context(
+        fake_playwright,
+        settings=settings,
+        proxy_router=proxy_router,
+        url="https://yandex.ru/search/?text=x",
+        warnings=warnings,
+    )
+
+    assert context is not None
+    assert closable is not None
+    assert "session_connected:cdp" in warnings

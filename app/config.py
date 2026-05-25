@@ -122,6 +122,10 @@ class Settings:
     playwright_timeout_ms: int
     playwright_headless: bool
     playwright_slow_mo_ms: int
+    yandex_browser_use_chrome_profile: bool
+    yandex_chrome_user_data_dir: Path
+    yandex_chrome_profile_directory: str
+    yandex_cdp_url: str
 
     browser_storage_state_dir: Path
     mos_portal_storage_state: Path
@@ -233,6 +237,12 @@ def get_settings() -> Settings:
         playwright_timeout_ms=_as_int(os.getenv("PLAYWRIGHT_TIMEOUT_MS"), default=60000),
         playwright_headless=_as_bool(os.getenv("PLAYWRIGHT_HEADLESS"), default=True),
         playwright_slow_mo_ms=_as_int(os.getenv("PLAYWRIGHT_SLOW_MO_MS"), default=0),
+        yandex_browser_use_chrome_profile=_as_bool(os.getenv("YANDEX_BROWSER_USE_CHROME_PROFILE"), default=True),
+        yandex_chrome_user_data_dir=Path(
+            os.getenv("YANDEX_CHROME_USER_DATA_DIR", str(Path.home() / "Library/Application Support/Google/Chrome"))
+        ).expanduser(),
+        yandex_chrome_profile_directory=os.getenv("YANDEX_CHROME_PROFILE_DIRECTORY", "Profile 1").strip() or "Profile 1",
+        yandex_cdp_url=os.getenv("YANDEX_CDP_URL", "http://127.0.0.1:9222").strip(),
         browser_storage_state_dir=(root / os.getenv("BROWSER_STORAGE_STATE_DIR", "data/browser_state")),
         mos_portal_storage_state=(root / os.getenv("MOS_PORTAL_STORAGE_STATE", "data/browser_state/mos_portal.json")),
         eat_storage_state=(root / os.getenv("EAT_STORAGE_STATE", "data/browser_state/eat.json")),

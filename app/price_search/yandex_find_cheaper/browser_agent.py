@@ -199,6 +199,41 @@ def _extract_price_from_offer_page(
                 pass
 
 
+def _open_browser_context(playwright_ctx: Any, *, settings: Any, proxy_router: Any, url: str, warnings: list[str]) -> tuple[Any, Any]:
+    if settings.yandex_browser_use_chrome_profile and settings.yandex_cdp_url:
+        try:
+            browser = playwright_ctx.chromium.connect_over_cdp(settings.yandex_cdp_url, timeout=max(1000, int(settings.connector_request_timeout_seconds * 1000)))
+            context = browser.contexts[0] if browser.contexts else browser.new_context(user_agent=settings.connector_user_agent)
+            warnings.append("session_connected:cdp")
+            return context, browser
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"auth_or_session_missing:cdp:{exc.__class__.__name__}")
+
+    decision = proxy_router.decide(url)
+    launch_kwargs: dict[str, Any] = {"headless": settings.playwright_headless}
+    if decision.use_proxy and decision.proxy_url:
+        launch_kwargs["proxy"] = {"server": decision.proxy_url}
+
+    if settings.yandex_browser_use_chrome_profile:
+        try:
+            launch_kwargs_profile = dict(launch_kwargs)
+            launch_kwargs_profile["channel"] = "chrome"
+            launch_kwargs_profile["headless"] = False
+            context = playwright_ctx.chromium.launch_persistent_context(
+                user_data_dir=str(settings.yandex_chrome_user_data_dir),
+                args=[f"--profile-directory={settings.yandex_chrome_profile_directory}"],
+                **launch_kwargs_profile,
+            )
+            warnings.append("session_connected:chrome_profile")
+            return context, context
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"auth_or_session_missing:chrome_profile:{exc.__class__.__name__}")
+
+    browser = playwright_ctx.chromium.launch(**launch_kwargs)
+    context = browser.new_context(user_agent=settings.connector_user_agent)
+    return context, browser
+
+
 class YandexBrowserAgent:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -219,16 +254,18 @@ class YandexBrowserAgent:
         try:
             with sync_playwright() as p:
                 for endpoint_name, url in (*endpoint_plan, *fallback_plan):
-                    decision = self.proxy_router.decide(url)
-                    launch_kwargs: dict[str, Any] = {"headless": True}
-                    if decision.use_proxy and decision.proxy_url:
-                        launch_kwargs["proxy"] = {"server": decision.proxy_url}
-
-                    browser = p.chromium.launch(**launch_kwargs)
-                    context = browser.new_context(user_agent=self.settings.connector_user_agent)
-                    page = context.new_page()
-
+                    context = None
+                    browser_or_context = None
+                    page = None
                     try:
+                        context, browser_or_context = _open_browser_context(
+                            p,
+                            settings=self.settings,
+                            proxy_router=self.proxy_router,
+                            url=url,
+                            warnings=warnings,
+                        )
+                        page = context.new_page()
                         page.goto(
                             url,
                             wait_until="domcontentloaded",
@@ -295,11 +332,20 @@ class YandexBrowserAgent:
                         if _is_fallback_endpoint(endpoint_name):
                             warnings.append(f"fallback_empty:{endpoint_name}")
                         warnings.append(f"no_relevant_rows:{endpoint_name}")
+                        warnings.append(f"parse_empty:{endpoint_name}")
                     except Exception as exc:  # noqa: BLE001
                         warnings.append(f"yandex_search_failed:{endpoint_name}: {exc}")
                     finally:
-                        context.close()
-                        browser.close()
+                        if page is not None:
+                            try:
+                                page.close()
+                            except Exception:
+                                pass
+                        if browser_or_context is not None:
+                            try:
+                                browser_or_context.close()
+                            except Exception:
+                                pass
 
                 rescue_records = _run_non_serp_rescue(
                     p,
@@ -356,15 +402,18 @@ def _run_non_serp_rescue(
 ) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for endpoint_name, url in _build_marketplace_rescue_plan(query):
-        decision = proxy_router.decide(url)
-        launch_kwargs: dict[str, Any] = {"headless": True}
-        if decision.use_proxy and decision.proxy_url:
-            launch_kwargs["proxy"] = {"server": decision.proxy_url}
-
-        browser = playwright_ctx.chromium.launch(**launch_kwargs)
-        context = browser.new_context(user_agent=settings.connector_user_agent)
-        page = context.new_page()
+        context = None
+        browser_or_context = None
+        page = None
         try:
+            context, browser_or_context = _open_browser_context(
+                playwright_ctx,
+                settings=settings,
+                proxy_router=proxy_router,
+                url=url,
+                warnings=warnings,
+            )
+            page = context.new_page()
             page.goto(
                 url,
                 wait_until="domcontentloaded",
@@ -384,6 +433,7 @@ def _run_non_serp_rescue(
             synthetic_title = f"{endpoint_name} search: {query}".strip()
             if not _has_relevance_signal(query_terms, synthetic_title, compact_text[:2000]):
                 warnings.append(f"non_serp_rescue_no_relevance:{endpoint_name}")
+                warnings.append(f"parse_empty:{endpoint_name}")
                 continue
 
             records.append(
@@ -402,8 +452,16 @@ def _run_non_serp_rescue(
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"non_serp_rescue_failed:{endpoint_name}:{exc}")
         finally:
-            context.close()
-            browser.close()
+            if page is not None:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            if browser_or_context is not None:
+                try:
+                    browser_or_context.close()
+                except Exception:
+                    pass
     return records
 
 

@@ -39,6 +39,9 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             "non_serp_rescue_no_relevance": 0,
             "non_serp_rescue_failed": 0,
             "non_serp_rescue_exhausted": 0,
+            "auth_or_session_missing": 0,
+            "parse_empty": 0,
+            "session_connected": 0,
             "invalid_or_junk_url": 0,
             "no_price_signal": 0,
             "strict_reject": "N/A",
@@ -72,6 +75,12 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                     stage_counters["non_serp_rescue_failed"] = int(stage_counters["non_serp_rescue_failed"]) + 1
                 if warning_text.startswith("non_serp_rescue_exhausted"):
                     stage_counters["non_serp_rescue_exhausted"] = int(stage_counters["non_serp_rescue_exhausted"]) + 1
+                if warning_text.startswith("auth_or_session_missing"):
+                    stage_counters["auth_or_session_missing"] = int(stage_counters["auth_or_session_missing"]) + 1
+                if warning_text.startswith("parse_empty"):
+                    stage_counters["parse_empty"] = int(stage_counters["parse_empty"]) + 1
+                if warning_text.startswith("session_connected"):
+                    stage_counters["session_connected"] = int(stage_counters["session_connected"]) + 1
             for row in batch_rows:
                 norm_url = normalize_url(str(row.get("url") or ""))
                 dedup_key = norm_url or f"{row.get('title') or ''}|{row.get('unit_price') or ''}"

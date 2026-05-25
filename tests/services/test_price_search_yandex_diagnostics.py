@@ -19,7 +19,9 @@ def test_derive_needs_manual_reason_priority_blocked_page() -> None:
 
 def test_derive_needs_manual_reason_variants() -> None:
     assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {"no_price_signal": 1}}) == "no_price_found"
+    assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {"auth_or_session_missing": 1}}) == "auth_or_session_missing"
     assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {"no_relevant_rows": 1}}) == "low_relevance"
+    assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {"parse_empty": 1}}) == "low_relevance"
     assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {"fallback_empty": 1}}) == "rescue_exhausted"
     assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {"invalid_or_junk_url": 1}}) == "extraction_failed"
     assert PriceSearchService._derive_needs_manual_reason({"stage_counters": {}}) == "empty"
