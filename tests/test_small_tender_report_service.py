@@ -326,6 +326,9 @@ def test_generate_small_tender_report_uses_alternative_price_fields_for_margin(t
     )
 
     assert summary["report_rows"] == 1
+    assert summary["margin_0_25_rows"] == 1
+    assert summary["margin_gt_25_rows"] == 0
+    assert summary["margin_gt_50_rows"] == 0
     with out_csv.open("r", encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
 

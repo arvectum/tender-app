@@ -359,6 +359,11 @@ def generate_small_tender_report(
         "report_rows": len(report_rows),
         "excluded_non_goods_rows": excluded_non_goods_count,
         "diagnostics_rows": len(diag_rows),
+        "margin_0_25_rows": sum(
+            1 for r in report_rows if r.get("margin_pct") is not None and 0 <= float(r["margin_pct"]) <= 25
+        ),
+        "margin_gt_25_rows": sum(1 for r in report_rows if r.get("margin_pct") is not None and float(r["margin_pct"]) > 25),
+        "margin_gt_50_rows": sum(1 for r in report_rows if r.get("margin_pct") is not None and float(r["margin_pct"]) > 50),
         "full_match_rows": sum(1 for r in report_rows if r.get("tz_match_type") == "full"),
         "green_rows": sum(1 for r in report_rows if r.get("decision_status") == "green"),
         "high_risk_rows": sum(1 for r in report_rows if r.get("decision_status") == "high_risk"),

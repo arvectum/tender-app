@@ -106,7 +106,7 @@ class PriceSearchService:
                         supplier_status=supplier_status,
                         min_threshold=self.min_match_score,
                     )
-                    candidate.is_relevant = candidate.is_relevant and relevance.is_relevant
+                    candidate.is_relevant = relevance.is_relevant
                     candidate.relevance_score = relevance.score if candidate.relevance_score is None else candidate.relevance_score
                     candidate.risk_flags = sorted(set(candidate.risk_flags + relevance.risk_flags))
                     candidate.match_score = relevance.score
@@ -276,7 +276,7 @@ class PriceSearchService:
                 supplier_status=supplier_status,
                 min_threshold=self.min_match_score,
             )
-            offer.is_relevant = relevance.is_relevant if offer.is_relevant else False
+            offer.is_relevant = relevance.is_relevant
             offer.relevance_score = Decimal(str(relevance.score))
             offer.risk_flags = sorted(set((offer.risk_flags or []) + relevance.risk_flags))
             offer.match_score = Decimal(str(relevance.score))
