@@ -68,7 +68,10 @@ class PriceSearchService:
                 if normalized_mode == "manual":
                     handled = self._process_manual_mode_item(item)
                     result.processed_items += 1
-                    result.created_offers += 0
+                    if handled == "ok":
+                        result.created_offers += len(
+                            self.session.scalars(select(MarketOffer.id).where(MarketOffer.purchase_item_id == item.id)).all()
+                        )
                     if handled == "needs_manual_price_search":
                         result.needs_manual_items += 1
                     continue

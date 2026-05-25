@@ -137,3 +137,82 @@ def test_manual_mode_relevance_can_recover_from_false() -> None:
 
         assert result == "ok"
         assert offer.is_relevant is True
+
+
+def test_search_prices_manual_reports_created_offers_count() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        load_fixtures(
+            session,
+            purchases_path=Path("fixtures/sample_purchases.json"),
+            offers_path=Path("fixtures/sample_market_offers.json"),
+            reset=True,
+        )
+
+        item = session.scalar(select(PurchaseItem).order_by(PurchaseItem.id).limit(1))
+        assert item is not None
+
+        offer_1 = MarketOffer(
+            provider="manual",
+            source="manual",
+            purchase_id=item.purchase_id,
+            purchase_item_id=item.id,
+            purchase_external_id=None,
+            position_external_id=item.position_external_id,
+            item_name=item.item_name,
+            offer_title="Offer 1",
+            offer_url="https://example.org/manual-offer-1",
+            seller_name="Seller 1",
+            supplier_name="Seller 1",
+            region="Москва",
+            unit_price=Decimal("90"),
+            available_quantity=10,
+            delivery_price=Decimal("0"),
+            delivery_days=1,
+            effective_unit_price=Decimal("90"),
+            is_relevant=False,
+            relevance_score=Decimal("0"),
+            risk_flags=[],
+            raw_payload={},
+            delivery_unknown=False,
+            supplier_status="unknown",
+        )
+        offer_2 = MarketOffer(
+            provider="manual",
+            source="manual",
+            purchase_id=item.purchase_id,
+            purchase_item_id=item.id,
+            purchase_external_id=None,
+            position_external_id=item.position_external_id,
+            item_name=item.item_name,
+            offer_title="Offer 2",
+            offer_url="https://example.org/manual-offer-2",
+            seller_name="Seller 2",
+            supplier_name="Seller 2",
+            region="Москва",
+            unit_price=Decimal("95"),
+            available_quantity=10,
+            delivery_price=Decimal("0"),
+            delivery_days=2,
+            effective_unit_price=Decimal("95"),
+            is_relevant=False,
+            relevance_score=Decimal("0"),
+            risk_flags=[],
+            raw_payload={},
+            delivery_unknown=False,
+            supplier_status="unknown",
+        )
+        session.add_all([offer_1, offer_2])
+        session.commit()
+
+        offers_count = len(session.scalars(select(MarketOffer.id).where(MarketOffer.purchase_item_id == item.id)).all())
+        assert offers_count == 2
+
+        service = PriceSearchService(session)
+        result = service.search_prices(mode="manual", item_id=item.id)
+
+        assert result.processed_items == 1
+        assert result.needs_manual_items == 0
+        assert result.created_offers == offers_count
