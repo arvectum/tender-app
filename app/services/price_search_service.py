@@ -30,6 +30,8 @@ class SearchPricesResult:
     created_offers: int = 0
     skipped_items: int = 0
     needs_manual_items: int = 0
+    needs_manual_reason_counters: dict[str, int] = field(default_factory=dict)
+    yandex_stage_counters: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
 
@@ -73,15 +75,19 @@ class PriceSearchService:
 
                 provider = self._provider_for_mode(normalized_mode)
                 candidates = provider.search_offers(item)
+                diagnostics: dict[str, Any] = {}
+                diagnostics_getter = getattr(provider, "get_last_diagnostics", None)
+                if callable(diagnostics_getter):
+                    diagnostics = diagnostics_getter() or {}
                 if not candidates:
-                    reason = "no_offers_found"
-                    diagnostics_getter = getattr(provider, "get_last_diagnostics", None)
-                    if callable(diagnostics_getter):
-                        diagnostics = diagnostics_getter() or {}
-                        stage_counters = diagnostics.get("stage_counters")
-                        if stage_counters:
-                            reason = f"no_offers_found|stage_counters={stage_counters}"
+                    reason_code = self._derive_needs_manual_reason(diagnostics)
+                    reason = reason_code
+                    stage_counters = diagnostics.get("stage_counters") if isinstance(diagnostics, dict) else None
+                    if isinstance(stage_counters, dict) and stage_counters:
+                        reason = f"{reason_code}|stage_counters={stage_counters}"
+                        self._merge_int_counters(result.yandex_stage_counters, stage_counters)
                     self._mark_needs_manual(item, reason=reason)
+                    result.needs_manual_reason_counters[reason_code] = result.needs_manual_reason_counters.get(reason_code, 0) + 1
                     result.needs_manual_items += 1
                     result.processed_items += 1
                     continue
@@ -119,6 +125,7 @@ class PriceSearchService:
 
                 if not unique:
                     self._mark_needs_manual(item, reason="all_duplicates_or_invalid")
+                    result.needs_manual_reason_counters["all_duplicates_or_invalid"] = result.needs_manual_reason_counters.get("all_duplicates_or_invalid", 0) + 1
                     result.needs_manual_items += 1
 
                 result.processed_items += 1
@@ -314,6 +321,36 @@ class PriceSearchService:
             calc.status = "needs_manual_price_search"
             calc.risk_flags = sorted(set((calc.risk_flags or []) + ["needs_manual_price_search"]))
             calc.calculation_details_json = {"reason": reason}
+
+    @staticmethod
+    def _merge_int_counters(target: dict[str, int], payload: dict[str, Any]) -> None:
+        for key, value in payload.items():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int):
+                target[key] = int(target.get(key, 0)) + value
+
+    @staticmethod
+    def _derive_needs_manual_reason(diagnostics: dict[str, Any]) -> str:
+        stage_counters = diagnostics.get("stage_counters") if isinstance(diagnostics, dict) else None
+        if not isinstance(stage_counters, dict):
+            return "extraction_failed"
+
+        if int(stage_counters.get("blocked_or_captcha") or 0) > 0:
+            return "blocked_page"
+        if int(stage_counters.get("no_price_signal") or 0) > 0:
+            return "no_price_found"
+        if int(stage_counters.get("no_relevant_rows") or 0) > 0 or int(stage_counters.get("non_serp_rescue_no_relevance") or 0) > 0:
+            return "low_relevance"
+        if (
+            int(stage_counters.get("fallback_empty") or 0) > 0
+            or int(stage_counters.get("non_serp_rescue_empty") or 0) > 0
+            or int(stage_counters.get("non_serp_rescue_exhausted") or 0) > 0
+        ):
+            return "rescue_exhausted"
+        if int(stage_counters.get("invalid_or_junk_url") or 0) > 0 or int(stage_counters.get("non_serp_rescue_failed") or 0) > 0:
+            return "extraction_failed"
+        return "empty"
 
 
 
