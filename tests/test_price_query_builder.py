@@ -1,5 +1,7 @@
+from dataclasses import replace
 from decimal import Decimal
 
+from app.config import get_settings
 from app.models import PurchaseItem
 from app.price_search.query_builder import build_search_queries, build_search_query
 
@@ -57,3 +59,15 @@ def test_build_search_queries_returns_multiple_variants_with_exclusions() -> Non
         lowered = query.lower()
         assert "-site:zakupki.mos.ru" in lowered
         assert "-site:market.mosreg.ru" in lowered
+
+
+def test_build_search_queries_adds_yandex_intent_fallback_deterministically_and_dedupes(monkeypatch) -> None:
+    settings = replace(get_settings(), price_search_mode="yandex")
+    monkeypatch.setattr("app.price_search.query_builder.get_settings", lambda: settings)
+
+    item = _make_item("Купить картридж HP CE410A цена")
+    queries = build_search_queries(item)
+    intent_queries = [q for q in queries if "цена" in q.lower() and "купить" in q.lower()]
+    assert len(intent_queries) >= 1
+    assert len(queries) == len({q.lower() for q in queries})
+    assert queries == build_search_queries(item)

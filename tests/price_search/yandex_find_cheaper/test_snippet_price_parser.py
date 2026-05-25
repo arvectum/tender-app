@@ -34,3 +34,7 @@ def test_parse_price_from_title_and_snippet_uses_both_sources() -> None:
 
 def test_parse_price_from_title_and_snippet_does_not_relax_currency_requirement() -> None:
     assert parse_ruble_price_from_title_and_snippet("Картридж 12 345", "Артикул 678") is None
+
+
+def test_parse_price_rejects_numeric_garbage_not_matching_currency_token() -> None:
+    assert parse_ruble_price_from_title_and_snippet("Модель X12345", "SKU 99999 rublesx") is None

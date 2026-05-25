@@ -70,7 +70,10 @@ def build_search_queries(item: PurchaseItem) -> list[str]:
     compact = _compose_query(head_tokens + fallback_tokens[:4], [], settings.price_search_region, exclusion_parts)
     fallback = _compose_query(fallback_tokens, [], settings.price_search_region, exclusion_parts)
 
-    return _unique_preserve([q for q in [primary, compact, fallback] if q])
+    queries = [q for q in [primary, compact, fallback] if q]
+    if settings.price_search_mode == "yandex":
+        queries.append(_append_price_intent_if_needed(primary))
+    return _unique_preserve([q for q in queries if q])
 
 
 def _category_token(category: str | None) -> str | None:
@@ -117,3 +120,13 @@ def _unique_preserve(values: list[str]) -> list[str]:
         seen.add(norm)
         result.append(value)
     return result
+
+
+def _append_price_intent_if_needed(query: str) -> str:
+    text = str(query or "").strip()
+    if not text:
+        return ""
+    lowered = text.lower()
+    if "цена" in lowered and "купить" in lowered:
+        return text
+    return f"{text} цена купить"

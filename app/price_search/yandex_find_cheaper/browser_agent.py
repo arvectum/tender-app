@@ -46,6 +46,30 @@ _LINK_SELECTORS: tuple[str, ...] = (
     "a[href]",
 )
 
+_TOKEN_SPLIT_RE = re.compile(r"[^a-zа-яё0-9]+", flags=re.IGNORECASE)
+_RELEVANCE_STOPWORDS = {
+    "и",
+    "в",
+    "на",
+    "для",
+    "по",
+    "из",
+    "под",
+    "при",
+    "с",
+    "со",
+    "к",
+    "от",
+    "до",
+    "за",
+    "о",
+    "об",
+    "товар",
+    "купить",
+    "цена",
+    "москва",
+}
+
 
 def parse_ruble_price_from_snippet(snippet: str) -> Decimal | None:
     try:
@@ -80,6 +104,7 @@ class YandexBrowserAgent:
 
     def search(self, query: str, limit: int = 8) -> tuple[list[dict[str, Any]], list[str]]:
         warnings: list[str] = []
+        query_terms = _extract_query_core_terms(query)
         try:
             from playwright.sync_api import sync_playwright  # type: ignore
         except Exception as exc:  # noqa: BLE001
@@ -158,6 +183,8 @@ class YandexBrowserAgent:
                     snippet = str((row or {}).get("snippet") or "").strip()
                     if not title or not offer_url:
                         continue
+                    if not _has_relevance_signal(query_terms, title, snippet):
+                        continue
 
                     price = parse_ruble_price_from_title_and_snippet(title, snippet)
 
@@ -178,3 +205,24 @@ class YandexBrowserAgent:
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"yandex_search_failed: {exc}")
             return [], warnings
+
+
+def _extract_query_core_terms(query: str) -> set[str]:
+    terms: set[str] = set()
+    for raw in _TOKEN_SPLIT_RE.split(str(query or "").lower()):
+        token = raw.strip()
+        if len(token) <= 1:
+            continue
+        if token in _RELEVANCE_STOPWORDS:
+            continue
+        if token == "site":
+            continue
+        terms.add(token)
+    return terms
+
+
+def _has_relevance_signal(query_terms: set[str], title: str, snippet: str) -> bool:
+    if not query_terms:
+        return True
+    haystack_terms = _extract_query_core_terms(f"{title} {snippet}")
+    return bool(query_terms.intersection(haystack_terms))
