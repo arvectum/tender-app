@@ -70,6 +70,31 @@ _RELEVANCE_STOPWORDS = {
     "москва",
 }
 
+_JUNK_URL_PATTERNS: tuple[str, ...] = (
+    "yabs.yandex",
+    "yandex.ru/clck",
+    "yandex.ru/images",
+    "yandex.ru/video",
+    "utm_source=yandex",
+)
+
+_CYR_LAT_CONFUSABLES = str.maketrans(
+    {
+        "a": "а",
+        "b": "в",
+        "c": "с",
+        "e": "е",
+        "h": "н",
+        "k": "к",
+        "m": "м",
+        "o": "о",
+        "p": "р",
+        "t": "т",
+        "x": "х",
+        "y": "у",
+    }
+)
+
 
 def parse_ruble_price_from_snippet(snippet: str) -> Decimal | None:
     try:
@@ -183,10 +208,13 @@ class YandexBrowserAgent:
                     snippet = str((row or {}).get("snippet") or "").strip()
                     if not title or not offer_url:
                         continue
+                    if _is_junk_offer_url(offer_url):
+                        continue
                     if not _has_relevance_signal(query_terms, title, snippet):
                         continue
 
                     price = parse_ruble_price_from_title_and_snippet(title, snippet)
+                    relevance_score = _calculate_relevance_score(query_terms, title, snippet)
 
                     records.append(
                         {
@@ -194,10 +222,14 @@ class YandexBrowserAgent:
                             "url": offer_url,
                             "snippet": snippet,
                             "unit_price": price,
+                            "_relevance_score": relevance_score,
                         }
                     )
-                    if len(records) >= limit:
-                        break
+
+                records.sort(key=lambda r: (float(r.get("_relevance_score") or 0.0), 1 if r.get("unit_price") else 0), reverse=True)
+                records = records[: max(0, int(limit))]
+                for record in records:
+                    record.pop("_relevance_score", None)
 
                 context.close()
                 browser.close()
@@ -210,19 +242,65 @@ class YandexBrowserAgent:
 def _extract_query_core_terms(query: str) -> set[str]:
     terms: set[str] = set()
     for raw in _TOKEN_SPLIT_RE.split(str(query or "").lower()):
-        token = raw.strip()
-        if len(token) <= 1:
-            continue
-        if token in _RELEVANCE_STOPWORDS:
-            continue
-        if token == "site":
-            continue
-        terms.add(token)
+        token_variants = _expand_token_variants(raw)
+        for token in token_variants:
+            if len(token) <= 1:
+                continue
+            if token in _RELEVANCE_STOPWORDS:
+                continue
+            if token == "site":
+                continue
+            terms.add(token)
     return terms
+
+
+def _expand_token_variants(raw: str) -> set[str]:
+    token = str(raw or "").strip().lower()
+    if not token:
+        return set()
+    variants: set[str] = {token}
+
+    if "-" in token:
+        variants.add(token.replace("-", ""))
+        variants.update(part for part in token.split("-") if part)
+    if "/" in token:
+        variants.add(token.replace("/", ""))
+        variants.update(part for part in token.split("/") if part)
+
+    if re.search(r"[a-z].*[а-яё]|[а-яё].*[a-z]", token):
+        variants.add(token.translate(_CYR_LAT_CONFUSABLES))
+    for variant in list(variants):
+        variants.update(_split_alnum_boundaries(variant))
+    return {v for v in variants if v}
+
+
+def _split_alnum_boundaries(token: str) -> set[str]:
+    parts = re.findall(r"[a-zа-яё]+|\d+", token, flags=re.IGNORECASE)
+    if len(parts) <= 1:
+        return set()
+    return {part.lower() for part in parts if part}
+
+
+def _calculate_relevance_score(query_terms: set[str], title: str, snippet: str) -> float:
+    if not query_terms:
+        return 0.0
+    haystack_terms = _extract_query_core_terms(f"{title} {snippet}")
+    if not haystack_terms:
+        return 0.0
+    overlap = query_terms.intersection(haystack_terms)
+    if not overlap:
+        return 0.0
+    return len(overlap) / max(len(query_terms), 1)
+
+
+def _is_junk_offer_url(url: str) -> bool:
+    lowered = str(url or "").strip().lower()
+    if not lowered:
+        return True
+    return any(pattern in lowered for pattern in _JUNK_URL_PATTERNS)
 
 
 def _has_relevance_signal(query_terms: set[str], title: str, snippet: str) -> bool:
     if not query_terms:
         return True
-    haystack_terms = _extract_query_core_terms(f"{title} {snippet}")
-    return bool(query_terms.intersection(haystack_terms))
+    return _calculate_relevance_score(query_terms, title, snippet) > 0
