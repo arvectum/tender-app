@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import atexit
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import signal
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db import SessionLocal
 from app.models import JobRun
 from app.services.calculation_service import calculate_all_purchases, calculate_purchase
 from app.services.excel_export_service import export_to_excel
@@ -168,22 +171,66 @@ def _run_with_lock(
         mark_skipped(session, job.id, result_json={"reason": "lock_already_acquired", "lock_name": lock_name})
         return _get_job_snapshot(session, job.id), None
 
-    try:
-        mark_running(session, job.id)
-        result = fn()
-        mark_success(session, job.id, result_json=_result_to_json(result))
-        return _get_job_snapshot(session, job.id), result
-    except Exception as exc:  # noqa: BLE001
-        mark_failed(session, job.id, error_message=str(exc))
-        failed_job = _get_job_snapshot(session, job.id)
-        notify_failed_job(
-            session,
-            job.id,
-            message=f"Job failed: {failed_job.job_type} source={failed_job.source or '-'} error={exc}",
-        )
-        raise
-    finally:
-        release_lock(session, lock_name)
+    with _lock_fail_safe(lock_name):
+        try:
+            mark_running(session, job.id)
+            result = fn()
+            mark_success(session, job.id, result_json=_result_to_json(result))
+            return _get_job_snapshot(session, job.id), result
+        except Exception as exc:  # noqa: BLE001
+            mark_failed(session, job.id, error_message=str(exc))
+            failed_job = _get_job_snapshot(session, job.id)
+            notify_failed_job(
+                session,
+                job.id,
+                message=f"Job failed: {failed_job.job_type} source={failed_job.source or '-'} error={exc}",
+            )
+            raise
+        finally:
+            release_lock(session, lock_name)
+
+
+class _lock_fail_safe:
+    def __init__(self, lock_name: str) -> None:
+        self._lock_name = lock_name
+        self._released = False
+        self._prev_sigterm = None
+        self._prev_sigint = None
+
+    def __enter__(self):
+        self._prev_sigterm = signal.getsignal(signal.SIGTERM)
+        self._prev_sigint = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGTERM, self._on_sigterm)
+        signal.signal(signal.SIGINT, self._on_sigint)
+        atexit.register(self._cleanup)
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self._restore_handlers()
+        self._cleanup()
+
+    def _restore_handlers(self) -> None:
+        if self._prev_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._prev_sigterm)
+        if self._prev_sigint is not None:
+            signal.signal(signal.SIGINT, self._prev_sigint)
+
+    def _cleanup(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        with SessionLocal() as cleanup_session:
+            release_lock(cleanup_session, self._lock_name)
+
+    def _on_sigterm(self, signum: int, _frame) -> None:
+        self._cleanup()
+        self._restore_handlers()
+        signal.raise_signal(signum)
+
+    def _on_sigint(self, signum: int, _frame) -> None:
+        self._cleanup()
+        self._restore_handlers()
+        signal.raise_signal(signum)
 
 
 def _result_to_json(result: Any) -> dict[str, Any]:
