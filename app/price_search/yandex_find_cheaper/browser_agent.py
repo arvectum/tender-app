@@ -7,6 +7,33 @@ from typing import Any
 from app.config import get_settings
 from app.utils.proxy import ProxyRouter
 
+_RUBLE_PRICE_RE = re.compile(
+    r"(?<!\d)(?:от\s+)?"
+    r"(?P<int>\d{1,3}(?:[\s\u00A0\u202F]\d{3})+|\d{1,9})"
+    r"(?:[.,](?P<frac>\d{1,2}))?\s*"
+    r"(?:₽|руб\.?|р\.?)(?=\D|$)",
+    flags=re.IGNORECASE,
+)
+
+
+def parse_ruble_price_from_snippet(snippet: str) -> Decimal | None:
+    try:
+        text = str(snippet or "")
+        match = _RUBLE_PRICE_RE.search(text)
+        if not match:
+            return None
+
+        int_part = re.sub(r"[\s\u00A0\u202F]", "", match.group("int") or "")
+        if not int_part.isdigit():
+            return None
+
+        frac_part = match.group("frac")
+        if frac_part:
+            return Decimal(f"{int_part}.{frac_part}")
+        return Decimal(int_part)
+    except Exception:
+        return None
+
 
 class YandexBrowserAgent:
     def __init__(self) -> None:
@@ -55,13 +82,7 @@ class YandexBrowserAgent:
                     if not title or not offer_url:
                         continue
 
-                    price_match = re.search(r"(\d[\d\s]{1,12})\s?[₽рр.]", snippet)
-                    price = None
-                    if price_match:
-                        try:
-                            price = Decimal(price_match.group(1).replace(" ", ""))
-                        except Exception:
-                            price = None
+                    price = parse_ruble_price_from_snippet(snippet)
 
                     records.append(
                         {
