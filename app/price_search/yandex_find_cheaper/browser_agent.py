@@ -66,6 +66,28 @@ _DDG_LINK_SELECTORS: tuple[str, ...] = (
     "h2.result__title a[href]",
 )
 
+_BING_CONTAINER_SELECTORS: tuple[str, ...] = (
+    "#b_results .b_algo",
+    ".b_algo",
+    "li.b_algo",
+)
+
+_BING_TITLE_SELECTORS: tuple[str, ...] = (
+    "h2 a",
+    "a",
+)
+
+_BING_SNIPPET_SELECTORS: tuple[str, ...] = (
+    ".b_caption p",
+    ".b_caption",
+    ".b_snippet",
+)
+
+_BING_LINK_SELECTORS: tuple[str, ...] = (
+    "h2 a[href]",
+    "a[href]",
+)
+
 _TOKEN_SPLIT_RE = re.compile(r"[^a-zа-яё0-9]+", flags=re.IGNORECASE)
 _RELEVANCE_STOPWORDS = {
     "и",
@@ -267,10 +289,10 @@ class YandexBrowserAgent:
                             record.pop("_relevance_score", None)
 
                         if records:
-                            if endpoint_name.startswith("ddg"):
+                            if _is_fallback_endpoint(endpoint_name):
                                 warnings.append(f"fallback_success:{endpoint_name}")
                             return records, warnings
-                        if endpoint_name.startswith("ddg"):
+                        if _is_fallback_endpoint(endpoint_name):
                             warnings.append(f"fallback_empty:{endpoint_name}")
                         warnings.append(f"no_relevant_rows:{endpoint_name}")
                     except Exception as exc:  # noqa: BLE001
@@ -297,6 +319,7 @@ def _build_fallback_endpoint_plan(query: str) -> tuple[tuple[str, str], ...]:
     normalized_query = quote_plus(str(query or "").strip())
     return (
         ("ddg_html", f"https://html.duckduckgo.com/html/?q={normalized_query}"),
+        ("bing_html", f"https://www.bing.com/search?q={normalized_query}&setlang=ru-ru"),
     )
 
 
@@ -327,6 +350,13 @@ def _extract_serp_rows(page: Any, endpoint_name: str = "desktop") -> list[dict[s
             "titles": list(_DDG_TITLE_SELECTORS),
             "snippets": list(_DDG_SNIPPET_SELECTORS),
             "links": list(_DDG_LINK_SELECTORS),
+        }
+    elif endpoint_name.startswith("bing"):
+        selectors_js = {
+            "containers": list(_BING_CONTAINER_SELECTORS),
+            "titles": list(_BING_TITLE_SELECTORS),
+            "snippets": list(_BING_SNIPPET_SELECTORS),
+            "links": list(_BING_LINK_SELECTORS),
         }
     else:
         selectors_js = {
@@ -439,3 +469,8 @@ def _has_relevance_signal(query_terms: set[str], title: str, snippet: str) -> bo
     if not query_terms:
         return True
     return _calculate_relevance_score(query_terms, title, snippet) > 0
+
+
+def _is_fallback_endpoint(endpoint_name: str) -> bool:
+    lowered = str(endpoint_name or "").lower()
+    return lowered.startswith("ddg") or lowered.startswith("bing")
