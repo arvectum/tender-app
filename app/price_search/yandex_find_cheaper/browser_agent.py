@@ -46,6 +46,26 @@ _LINK_SELECTORS: tuple[str, ...] = (
     "a[href]",
 )
 
+_DDG_CONTAINER_SELECTORS: tuple[str, ...] = (
+    ".result",
+    ".results_links",
+)
+
+_DDG_TITLE_SELECTORS: tuple[str, ...] = (
+    "a.result__a",
+    "h2.result__title a",
+)
+
+_DDG_SNIPPET_SELECTORS: tuple[str, ...] = (
+    ".result__snippet",
+    ".result__body",
+)
+
+_DDG_LINK_SELECTORS: tuple[str, ...] = (
+    "a.result__a[href]",
+    "h2.result__title a[href]",
+)
+
 _TOKEN_SPLIT_RE = re.compile(r"[^a-zа-яё0-9]+", flags=re.IGNORECASE)
 _RELEVANCE_STOPWORDS = {
     "и",
@@ -132,6 +152,31 @@ def parse_ruble_price_from_title_and_snippet(title: str, snippet: str) -> Decima
     return parse_ruble_price_from_snippet(joined_text)
 
 
+def _extract_price_from_offer_page(
+    context: Any,
+    offer_url: str,
+    *,
+    timeout_ms: int,
+    max_chars: int = 20000,
+) -> Decimal | None:
+    page = None
+    try:
+        page = context.new_page()
+        page.goto(offer_url, wait_until="domcontentloaded", timeout=max(1000, int(timeout_ms)))
+        body_text = str(page.inner_text("body") or "")
+        if max_chars > 0:
+            body_text = body_text[:max_chars]
+        return parse_ruble_price_from_snippet(body_text)
+    except Exception:
+        return None
+    finally:
+        if page is not None:
+            try:
+                page.close()
+            except Exception:
+                pass
+
+
 class YandexBrowserAgent:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -147,10 +192,11 @@ class YandexBrowserAgent:
             return [], warnings
 
         endpoint_plan = _build_yandex_endpoint_plan(query)
+        fallback_plan = _build_fallback_endpoint_plan(query)
 
         try:
             with sync_playwright() as p:
-                for endpoint_name, url in endpoint_plan:
+                for endpoint_name, url in (*endpoint_plan, *fallback_plan):
                     decision = self.proxy_router.decide(url)
                     launch_kwargs: dict[str, Any] = {"headless": True}
                     if decision.use_proxy and decision.proxy_url:
@@ -167,11 +213,14 @@ class YandexBrowserAgent:
                             timeout=int(self.settings.connector_request_timeout_seconds * 1000),
                         )
                         page_text = (page.inner_text("body") or "").lower()
+                        if endpoint_name.startswith("ddg") and _is_ddg_rate_limited_or_blocked(page_text):
+                            warnings.append(f"captcha_or_blocked:{endpoint_name}")
+                            continue
                         if _is_blocked_response(page_text):
                             warnings.append(f"captcha_or_blocked:{endpoint_name}")
                             continue
 
-                        rows = _extract_serp_rows(page)
+                        rows = _extract_serp_rows(page, endpoint_name=endpoint_name)
                         if not rows:
                             warnings.append(f"empty_serp:{endpoint_name}")
                             continue
@@ -189,6 +238,17 @@ class YandexBrowserAgent:
                                 continue
 
                             price = parse_ruble_price_from_title_and_snippet(title, snippet)
+                            if price is None and endpoint_name == "ddg_html":
+                                page_timeout_ms = int(self.settings.connector_request_timeout_seconds * 1000)
+                                offer_timeout_ms = max(1000, min(page_timeout_ms, 5000))
+                                offer_page_price = _extract_price_from_offer_page(
+                                    context,
+                                    offer_url,
+                                    timeout_ms=offer_timeout_ms,
+                                )
+                                if offer_page_price is not None:
+                                    price = offer_page_price
+                                    warnings.append("price_from_offer_page:ddg_html")
                             relevance_score = _calculate_relevance_score(query_terms, title, snippet)
 
                             records.append(
@@ -207,7 +267,11 @@ class YandexBrowserAgent:
                             record.pop("_relevance_score", None)
 
                         if records:
+                            if endpoint_name.startswith("ddg"):
+                                warnings.append(f"fallback_success:{endpoint_name}")
                             return records, warnings
+                        if endpoint_name.startswith("ddg"):
+                            warnings.append(f"fallback_empty:{endpoint_name}")
                         warnings.append(f"no_relevant_rows:{endpoint_name}")
                     except Exception as exc:  # noqa: BLE001
                         warnings.append(f"yandex_search_failed:{endpoint_name}: {exc}")
@@ -229,6 +293,13 @@ def _build_yandex_endpoint_plan(query: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def _build_fallback_endpoint_plan(query: str) -> tuple[tuple[str, str], ...]:
+    normalized_query = quote_plus(str(query or "").strip())
+    return (
+        ("ddg_html", f"https://html.duckduckgo.com/html/?q={normalized_query}"),
+    )
+
+
 def _is_blocked_response(page_text: str) -> bool:
     lowered = str(page_text or "").lower()
     if not lowered:
@@ -236,13 +307,34 @@ def _is_blocked_response(page_text: str) -> bool:
     return any(marker in lowered for marker in _BLOCK_MARKERS)
 
 
-def _extract_serp_rows(page: Any) -> list[dict[str, Any]]:
-    selectors_js = {
-        "containers": list(_SERP_CONTAINER_SELECTORS),
-        "titles": list(_TITLE_SELECTORS),
-        "snippets": list(_SNIPPET_SELECTORS),
-        "links": list(_LINK_SELECTORS),
-    }
+def _is_ddg_rate_limited_or_blocked(page_text: str) -> bool:
+    lowered = str(page_text or "").lower()
+    if not lowered:
+        return False
+    ddg_markers = (
+        "automated requests",
+        "please complete the following challenge",
+        "unusual traffic",
+        "captcha",
+    )
+    return any(marker in lowered for marker in ddg_markers)
+
+
+def _extract_serp_rows(page: Any, endpoint_name: str = "desktop") -> list[dict[str, Any]]:
+    if endpoint_name.startswith("ddg"):
+        selectors_js = {
+            "containers": list(_DDG_CONTAINER_SELECTORS),
+            "titles": list(_DDG_TITLE_SELECTORS),
+            "snippets": list(_DDG_SNIPPET_SELECTORS),
+            "links": list(_DDG_LINK_SELECTORS),
+        }
+    else:
+        selectors_js = {
+            "containers": list(_SERP_CONTAINER_SELECTORS),
+            "titles": list(_TITLE_SELECTORS),
+            "snippets": list(_SNIPPET_SELECTORS),
+            "links": list(_LINK_SELECTORS),
+        }
     rows = page.evaluate(
         r"""
         ({containers, titles, snippets, links}) => {
