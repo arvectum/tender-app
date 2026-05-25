@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote_plus
 
 from app.config import get_settings
 from app.utils.proxy import ProxyRouter
@@ -13,6 +14,36 @@ _RUBLE_PRICE_RE = re.compile(
     r"(?:[.,](?P<frac>\d{1,2}))?\s*"
     r"(?:₽|руб\.?|р\.?)(?=\D|$)",
     flags=re.IGNORECASE,
+)
+
+_SERP_CONTAINER_SELECTORS: tuple[str, ...] = (
+    "li.serp-item",
+    ".serp-item",
+    ".Organic",
+    "article",
+)
+
+_TITLE_SELECTORS: tuple[str, ...] = (
+    "h1",
+    "h2",
+    "h3",
+    "a.OrganicTitle-Link",
+    "a.Link.Link_theme_normal.OrganicTitle-Link",
+    "a.link.organic__url",
+)
+
+_SNIPPET_SELECTORS: tuple[str, ...] = (
+    ".OrganicTextContentSpan",
+    ".organic__text",
+    ".TextContainer",
+    ".ExtendedText-Short",
+    ".ExtendedText",
+)
+
+_LINK_SELECTORS: tuple[str, ...] = (
+    "a.OrganicTitle-Link[href]",
+    "a.link.organic__url[href]",
+    "a[href]",
 )
 
 
@@ -35,6 +66,13 @@ def parse_ruble_price_from_snippet(snippet: str) -> Decimal | None:
         return None
 
 
+def parse_ruble_price_from_title_and_snippet(title: str, snippet: str) -> Decimal | None:
+    title_text = str(title or "").strip()
+    snippet_text = str(snippet or "").strip()
+    joined_text = "\n".join(part for part in [title_text, snippet_text] if part)
+    return parse_ruble_price_from_snippet(joined_text)
+
+
 class YandexBrowserAgent:
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -48,7 +86,8 @@ class YandexBrowserAgent:
             warnings.append(f"playwright unavailable: {exc}")
             return [], warnings
 
-        url = f"https://yandex.ru/search/?text={query}"
+        normalized_query = quote_plus(str(query or "").strip())
+        url = f"https://yandex.ru/search/?text={normalized_query}"
         decision = self.proxy_router.decide(url)
 
         try:
@@ -69,9 +108,47 @@ class YandexBrowserAgent:
                     browser.close()
                     return [], warnings
 
-                rows = page.eval_on_selector_all(
-                    "li.serp-item",
-                    "elements => elements.map(e => ({title: (e.querySelector('h2')?.innerText || '').trim(), url: e.querySelector('a')?.href || '', snippet: (e.innerText || '').trim()}))",
+                selectors_js = {
+                    "containers": list(_SERP_CONTAINER_SELECTORS),
+                    "titles": list(_TITLE_SELECTORS),
+                    "snippets": list(_SNIPPET_SELECTORS),
+                    "links": list(_LINK_SELECTORS),
+                }
+                rows = page.evaluate(
+                    r"""
+                    ({containers, titles, snippets, links}) => {
+                      const findText = (root, selectors) => {
+                        for (const sel of selectors) {
+                          const el = root.querySelector(sel);
+                          const text = (el?.innerText || el?.textContent || '').trim();
+                          if (text) return text;
+                        }
+                        return '';
+                      };
+
+                      const findHref = (root, selectors) => {
+                        for (const sel of selectors) {
+                          const href = (root.querySelector(sel)?.href || '').trim();
+                          if (href && /^https?:\/\//i.test(href)) return href;
+                        }
+                        return '';
+                      };
+
+                      const output = [];
+                      for (const containerSel of containers) {
+                        const nodes = Array.from(document.querySelectorAll(containerSel));
+                        for (const node of nodes) {
+                          const title = findText(node, titles);
+                          const url = findHref(node, links);
+                          const snippet = findText(node, snippets) || (node.innerText || '').trim();
+                          output.push({title, url, snippet});
+                        }
+                        if (output.length) break;
+                      }
+                      return output;
+                    }
+                    """,
+                    selectors_js,
                 )
 
                 records: list[dict[str, Any]] = []
@@ -82,7 +159,7 @@ class YandexBrowserAgent:
                     if not title or not offer_url:
                         continue
 
-                    price = parse_ruble_price_from_snippet(snippet)
+                    price = parse_ruble_price_from_title_and_snippet(title, snippet)
 
                     records.append(
                         {
