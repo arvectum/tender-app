@@ -32,6 +32,8 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             "blocked_or_captcha": 0,
             "empty_serp": 0,
             "no_relevant_rows": 0,
+            "fallback_success": 0,
+            "fallback_empty": 0,
             "invalid_or_junk_url": 0,
             "no_price_signal": 0,
             "strict_reject": "N/A",
@@ -51,6 +53,10 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                     stage_counters["empty_serp"] = int(stage_counters["empty_serp"]) + 1
                 if warning_text.startswith("no_relevant_rows"):
                     stage_counters["no_relevant_rows"] = int(stage_counters["no_relevant_rows"]) + 1
+                if warning_text.startswith("fallback_success"):
+                    stage_counters["fallback_success"] = int(stage_counters["fallback_success"]) + 1
+                if warning_text.startswith("fallback_empty"):
+                    stage_counters["fallback_empty"] = int(stage_counters["fallback_empty"]) + 1
             for row in batch_rows:
                 norm_url = normalize_url(str(row.get("url") or ""))
                 dedup_key = norm_url or f"{row.get('title') or ''}|{row.get('unit_price') or ''}"

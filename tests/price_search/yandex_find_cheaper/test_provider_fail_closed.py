@@ -69,6 +69,29 @@ class _FakeAgentWithStageWarnings:
         return self.rows, ["captcha_or_blocked:desktop", "empty_serp:touch", "no_relevant_rows:desktop"]
 
 
+class _FakeAgentYandexBlockedDdgFallbackSuccess:
+    def search(self, query: str, limit: int = 10):
+        return [
+            {
+                "title": "Ноутбук Lenovo ThinkPad E14",
+                "url": "https://vendor.example/thinkpad-e14",
+                "snippet": "Цена 74 990 ₽ в наличии",
+                "unit_price": "74990",
+            }
+        ], ["captcha_or_blocked:desktop", "captcha_or_blocked:touch", "fallback_success:ddg_html"]
+
+
+class _FakeAgentYandexBlockedDdgFallbackEmpty:
+    def search(self, query: str, limit: int = 10):
+        return [], [
+            "captcha_or_blocked:desktop",
+            "captcha_or_blocked:touch",
+            "empty_serp:ddg_html",
+            "fallback_empty:ddg_html",
+            "no_relevant_rows:ddg_html",
+        ]
+
+
 def test_provider_returns_empty_on_blocked_without_candidates() -> None:
     provider = YandexFindCheaperProvider()
     provider.agent = _FakeAgent()
