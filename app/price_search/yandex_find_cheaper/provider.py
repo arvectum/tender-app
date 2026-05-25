@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from decimal import Decimal
 from urllib.parse import urlparse
 
 from app.config import get_settings
 from app.models import PurchaseItem
 from app.price_search.base import MarketOfferCandidate, PriceSearchProvider
-from app.price_search.normalization import normalize_delivery_price, normalize_quantity, normalize_region, normalize_url
+from app.price_search.normalization import normalize_delivery_price, normalize_price, normalize_quantity, normalize_region, normalize_url
 from app.price_search.query_builder import build_search_queries
 from app.price_search.relevance import calculate_offer_relevance
 from app.price_search.yandex_find_cheaper.browser_agent import YandexBrowserAgent
@@ -37,10 +36,12 @@ class YandexFindCheaperProvider(PriceSearchProvider):
 
         candidates: list[MarketOfferCandidate] = []
         for row in rows:
-            unit_price = row.get("unit_price")
-            if unit_price is None:
+            parsed_unit_price = normalize_price(row.get("unit_price"))
+            if parsed_unit_price is None or parsed_unit_price <= 0:
                 continue
             offer_url = normalize_url(str(row.get("url") or ""))
+            if not _is_valid_http_url(offer_url):
+                continue
             if _is_procurement_domain_url(offer_url):
                 continue
 
@@ -55,7 +56,7 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                 url=offer_url,
                 seller_name=row.get("seller_name") or None,
                 region=region,
-                unit_price=Decimal(str(unit_price)),
+                unit_price=parsed_unit_price,
                 available_quantity=quantity,
                 delivery_price=delivery_price,
                 delivery_days=None,
@@ -97,3 +98,13 @@ def _is_procurement_domain_url(url: str) -> bool:
         "zakupki360.com",
     )
     return any(hostname == domain or hostname.endswith(f".{domain}") for domain in blocked)
+
+
+def _is_valid_http_url(url: str | None) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)

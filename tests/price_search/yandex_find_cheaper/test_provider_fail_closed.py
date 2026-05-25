@@ -53,6 +53,14 @@ class _FakeAgentWithFallbackHit:
         ], []
 
 
+class _FakeAgentWithInvalidRows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def search(self, query: str, limit: int = 10):
+        return self.rows, []
+
+
 def test_provider_returns_empty_on_blocked_without_candidates() -> None:
     provider = YandexFindCheaperProvider()
     provider.agent = _FakeAgent()
@@ -83,3 +91,46 @@ def test_provider_uses_fallback_query_when_primary_empty(monkeypatch) -> None:
     assert len(candidates) == 1
     assert candidates[0].url == "https://vendor.example/product/thinkpad"
     assert agent.calls == ["q-primary", "q-fallback"]
+
+
+def test_provider_filters_missing_or_invalid_url_rows() -> None:
+    provider = YandexFindCheaperProvider()
+    provider.agent = _FakeAgentWithInvalidRows(
+        [
+            {"title": "Ноутбук A", "url": "", "unit_price": "1000"},
+            {"title": "Ноутбук B", "url": "not-a-url", "unit_price": "1000"},
+            {"title": "Ноутбук C", "url": "ftp://vendor.example/item", "unit_price": "1000"},
+        ]
+    )
+
+    candidates = provider.search_offers(_FakeItem())
+
+    assert candidates == []
+
+
+def test_provider_filters_non_positive_unit_price() -> None:
+    provider = YandexFindCheaperProvider()
+    provider.agent = _FakeAgentWithInvalidRows(
+        [
+            {"title": "Ноутбук A", "url": "https://vendor.example/a", "unit_price": "0"},
+            {"title": "Ноутбук B", "url": "https://vendor.example/b", "unit_price": "-1"},
+        ]
+    )
+
+    candidates = provider.search_offers(_FakeItem())
+
+    assert candidates == []
+
+
+def test_provider_filters_malformed_price_without_exception() -> None:
+    provider = YandexFindCheaperProvider()
+    provider.agent = _FakeAgentWithInvalidRows(
+        [
+            {"title": "Ноутбук A", "url": "https://vendor.example/a", "unit_price": "abc"},
+            {"title": "Ноутбук B", "url": "https://vendor.example/b", "unit_price": "--"},
+        ]
+    )
+
+    candidates = provider.search_offers(_FakeItem())
+
+    assert candidates == []
