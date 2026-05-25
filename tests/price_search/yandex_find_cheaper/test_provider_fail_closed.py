@@ -61,6 +61,14 @@ class _FakeAgentWithInvalidRows:
         return self.rows, []
 
 
+class _FakeAgentWithStageWarnings:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def search(self, query: str, limit: int = 10):
+        return self.rows, ["captcha_or_blocked:desktop", "empty_serp:touch", "no_relevant_rows:desktop"]
+
+
 def test_provider_returns_empty_on_blocked_without_candidates() -> None:
     provider = YandexFindCheaperProvider()
     provider.agent = _FakeAgent()
@@ -134,3 +142,26 @@ def test_provider_filters_malformed_price_without_exception() -> None:
     candidates = provider.search_offers(_FakeItem())
 
     assert candidates == []
+
+
+def test_provider_collects_stage_counters_for_fail_closed_diagnostics() -> None:
+    provider = YandexFindCheaperProvider()
+    provider.agent = _FakeAgentWithStageWarnings(
+        [
+            {"title": "Ноутбук A", "url": "https://market.mosreg.ru/Trade/ViewTrade?id=1", "unit_price": "1000"},
+            {"title": "Ноутбук B", "url": "https://vendor.example/b", "unit_price": "abc"},
+        ]
+    )
+
+    candidates = provider.search_offers(_FakeItem())
+
+    assert candidates == []
+    diagnostics = provider.get_last_diagnostics()
+    counters = diagnostics["stage_counters"]
+    assert counters["blocked_or_captcha"] >= 1
+    assert counters["empty_serp"] >= 1
+    assert counters["no_relevant_rows"] >= 1
+    assert counters["invalid_or_junk_url"] == 1
+    assert counters["no_price_signal"] == 1
+    assert counters["strict_reject"] == "N/A"
+    assert any(str(w).startswith("diagnostics_stage_counters:") for w in diagnostics["warnings"])

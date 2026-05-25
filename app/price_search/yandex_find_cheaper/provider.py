@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from urllib.parse import urlparse
 
 from app.config import get_settings
@@ -17,8 +18,24 @@ class YandexFindCheaperProvider(PriceSearchProvider):
     def __init__(self) -> None:
         self.agent = YandexBrowserAgent()
         self.settings = get_settings()
+        self.last_stage_counters: dict[str, int | str] = {}
+        self.last_warnings: list[str] = []
+
+    def get_last_diagnostics(self) -> dict[str, object]:
+        return {
+            "stage_counters": dict(self.last_stage_counters),
+            "warnings": list(self.last_warnings),
+        }
 
     def search_offers(self, item: PurchaseItem) -> list[MarketOfferCandidate]:
+        stage_counters: dict[str, int | str] = {
+            "blocked_or_captcha": 0,
+            "empty_serp": 0,
+            "no_relevant_rows": 0,
+            "invalid_or_junk_url": 0,
+            "no_price_signal": 0,
+            "strict_reject": "N/A",
+        }
         queries = build_search_queries(item)
         warnings: list[str] = []
         rows: list[dict] = []
@@ -26,6 +43,14 @@ class YandexFindCheaperProvider(PriceSearchProvider):
         for query in queries:
             batch_rows, batch_warnings = self.agent.search(query=query, limit=10)
             warnings.extend(batch_warnings)
+            for warning in batch_warnings:
+                warning_text = str(warning)
+                if warning_text.startswith("captcha_or_blocked"):
+                    stage_counters["blocked_or_captcha"] = int(stage_counters["blocked_or_captcha"]) + 1
+                if warning_text.startswith("empty_serp"):
+                    stage_counters["empty_serp"] = int(stage_counters["empty_serp"]) + 1
+                if warning_text.startswith("no_relevant_rows"):
+                    stage_counters["no_relevant_rows"] = int(stage_counters["no_relevant_rows"]) + 1
             for row in batch_rows:
                 norm_url = normalize_url(str(row.get("url") or ""))
                 dedup_key = norm_url or f"{row.get('title') or ''}|{row.get('unit_price') or ''}"
@@ -38,11 +63,14 @@ class YandexFindCheaperProvider(PriceSearchProvider):
         for row in rows:
             parsed_unit_price = normalize_price(row.get("unit_price"))
             if parsed_unit_price is None or parsed_unit_price <= 0:
+                stage_counters["no_price_signal"] = int(stage_counters["no_price_signal"]) + 1
                 continue
             offer_url = normalize_url(str(row.get("url") or ""))
             if not _is_valid_http_url(offer_url):
+                stage_counters["invalid_or_junk_url"] = int(stage_counters["invalid_or_junk_url"]) + 1
                 continue
             if _is_procurement_domain_url(offer_url):
+                stage_counters["invalid_or_junk_url"] = int(stage_counters["invalid_or_junk_url"]) + 1
                 continue
 
             quantity, quantity_flags = normalize_quantity(row.get("available_quantity"))
@@ -60,7 +88,13 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                 available_quantity=quantity,
                 delivery_price=delivery_price,
                 delivery_days=None,
-                raw_payload=row,
+                raw_payload={
+                    **row,
+                    "_diagnostics": {
+                        "stage_counters": stage_counters,
+                        "warnings": warnings,
+                    },
+                },
                 risk_flags=sorted(set(quantity_flags + delivery_flags + region_flags)),
                 item_name=item.item_name,
             )
@@ -69,6 +103,10 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             candidate.relevance_score = relevance.score
             candidate.risk_flags = sorted(set(candidate.risk_flags + relevance.risk_flags))
             candidates.append(candidate)
+
+        warnings.append(f"diagnostics_stage_counters:{json.dumps(stage_counters, ensure_ascii=False, sort_keys=True)}")
+        self.last_stage_counters = dict(stage_counters)
+        self.last_warnings = list(warnings)
 
         # Fail closed: when search is blocked/captcha/no parsable rows,
         # return no candidates so caller marks item as needs_manual_price_search.

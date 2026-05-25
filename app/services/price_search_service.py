@@ -74,7 +74,14 @@ class PriceSearchService:
                 provider = self._provider_for_mode(normalized_mode)
                 candidates = provider.search_offers(item)
                 if not candidates:
-                    self._mark_needs_manual(item, reason="no_offers_found")
+                    reason = "no_offers_found"
+                    diagnostics_getter = getattr(provider, "get_last_diagnostics", None)
+                    if callable(diagnostics_getter):
+                        diagnostics = diagnostics_getter() or {}
+                        stage_counters = diagnostics.get("stage_counters")
+                        if stage_counters:
+                            reason = f"no_offers_found|stage_counters={stage_counters}"
+                    self._mark_needs_manual(item, reason=reason)
                     result.needs_manual_items += 1
                     result.processed_items += 1
                     continue
