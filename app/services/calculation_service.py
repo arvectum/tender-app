@@ -203,7 +203,9 @@ def _calculate_item_cost(
 
     excluded_reasons: list[dict] = []
     relevant_candidates: list[MarketOffer] = []
+    fallback_candidates: list[MarketOffer] = []
     has_manual_blocker = False
+    low_relevance_fallback_used = False
 
     for offer in offers:
         risk_flags = offer.risk_flags or []
@@ -220,6 +222,13 @@ def _calculate_item_cost(
 
         if not _effective_offer_relevance(offer):
             excluded_reasons.append({"offer_id": offer.id, "reason": "not_relevant"})
+            if (
+                not has_manual_blocker
+                and not offer.hard_reject_reason
+                and Decimal(str(offer.unit_price)) > 0
+                and not (delivery_mode == "strict" and _is_delivery_unknown(offer))
+            ):
+                fallback_candidates.append(offer)
             continue
 
         if delivery_mode == "strict" and _is_delivery_unknown(offer):
@@ -231,6 +240,10 @@ def _calculate_item_cost(
             continue
 
         relevant_candidates.append(offer)
+
+    if not relevant_candidates and fallback_candidates:
+        relevant_candidates = fallback_candidates
+        low_relevance_fallback_used = True
 
     if not relevant_candidates:
         status = "needs_manual_price_search" if has_manual_blocker else "no_relevant_offers"
@@ -363,6 +376,10 @@ def _calculate_item_cost(
     else:
         status = "ok"
 
+    calc_risk_flags = _build_risk_flags(status=status, unknown_delivery_used=unknown_delivery_used, quantity_unknown_used=quantity_unknown_used)
+    if low_relevance_fallback_used:
+        calc_risk_flags = sorted(set(calc_risk_flags + ["low_relevance_fallback"]))
+
     calc = ItemCostCalculation(
         purchase_id=purchase.id,
         purchase_item_id=item_id,
@@ -372,7 +389,7 @@ def _calculate_item_cost(
         estimated_item_cost=_quantize_money(total_cost),
         unknown_delivery_used=unknown_delivery_used,
         selected_offers=selected_offer_rows,
-        risk_flags=_build_risk_flags(status=status, unknown_delivery_used=unknown_delivery_used, quantity_unknown_used=quantity_unknown_used),
+        risk_flags=calc_risk_flags,
         calculation_details_json={
             "required_quantity": required_quantity,
             "used_offers": selected_offer_rows,
@@ -380,6 +397,7 @@ def _calculate_item_cost(
             "overbuy_quantity": overbuy_total,
             "overbuy_cost": str(_quantize_money(overbuy_cost)),
             "excluded_offers": excluded_reasons,
+            "low_relevance_fallback_used": low_relevance_fallback_used,
         },
     )
     session.add(calc)
@@ -400,7 +418,7 @@ def _calculate_item_cost(
     return {
         "estimated_cost": _quantize_money(total_cost),
         "status": status,
-        "risk_flags": calc.risk_flags,
+        "risk_flags": calc_risk_flags,
     }
 
 
@@ -497,7 +515,15 @@ def _calculate_tax(max_total_price: Decimal, profit_before_tax: Decimal, tax_mod
 def _percent(numerator: Decimal, denominator: Decimal) -> Decimal:
     if denominator <= 0:
         return Decimal("0")
-    return _quantize_money((numerator / denominator) * Decimal("100"))
+    raw = _quantize_money((numerator / denominator) * Decimal("100"))
+    # Fits DB column Numeric(8,2) used by margin_*_percent and margin_percent.
+    upper = Decimal("999999.99")
+    lower = Decimal("-999999.99")
+    if raw > upper:
+        return upper
+    if raw < lower:
+        return lower
+    return raw
 
 
 def _risk_level(recommendation_status: str, problematic_items_count: int, unknown_delivery_items_count: int, tax_risk: bool) -> str:

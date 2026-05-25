@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import Base
 from app.models import ItemCostCalculation, MarketOffer, Purchase, PurchaseCalculation, PurchaseItem
-from app.services.calculation_service import calculate_purchase
+from app.services.calculation_service import _percent, calculate_purchase
 
 
 def _seed_purchase(session: Session, external_id: str = "MOS-10") -> tuple[Purchase, PurchaseItem]:
@@ -95,7 +95,7 @@ def test_calculation_uses_cheapest_and_next_offer_mix() -> None:
         assert len(calc.selected_offers) == 2
 
 
-def test_irrelevant_offers_are_not_used() -> None:
+def test_low_relevance_non_hard_reject_offers_fallback_is_used() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
 
@@ -127,7 +127,50 @@ def test_irrelevant_offers_are_not_used() -> None:
         calculate_purchase(session, purchase.id)
         calc = session.scalar(select(ItemCostCalculation).where(ItemCostCalculation.purchase_item_id == item.id))
         assert calc is not None
+        assert calc.status == "ok"
+        assert float(calc.estimated_item_cost) == 40.0
+        assert "low_relevance_fallback" in (calc.risk_flags or [])
+
+        purchase_calc = session.scalar(select(PurchaseCalculation).where(PurchaseCalculation.purchase_id == purchase.id))
+        assert purchase_calc is not None
+        assert float(purchase_calc.margin_percent) > 0.0
+
+
+def test_hard_reject_offers_still_excluded_in_fallback_mode() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        purchase, item = _seed_purchase(session, external_id="MOS-21B")
+        session.add(
+            MarketOffer(
+                provider="manual",
+                source="manual",
+                purchase_id=purchase.id,
+                purchase_item_id=item.id,
+                purchase_external_id=purchase.external_id,
+                position_external_id=item.position_external_id,
+                item_name=item.item_name,
+                offer_title="Похожий, но другой артикул",
+                seller_name="X",
+                supplier_name="X",
+                unit_price=Decimal("10"),
+                available_quantity=10,
+                delivery_price=Decimal("0"),
+                effective_unit_price=Decimal("10"),
+                relevance_score=Decimal("0.2"),
+                is_relevant=False,
+                hard_reject_reason="different_article",
+                risk_flags=["hard_reject"],
+            )
+        )
+        session.commit()
+
+        calculate_purchase(session, purchase.id)
+        calc = session.scalar(select(ItemCostCalculation).where(ItemCostCalculation.purchase_item_id == item.id))
+        assert calc is not None
         assert calc.status == "no_relevant_offers"
+        assert "low_relevance_fallback" not in (calc.risk_flags or [])
 
 
 def test_insufficient_quantity_status() -> None:
@@ -165,18 +208,23 @@ def test_insufficient_quantity_status() -> None:
         assert calc.status == "insufficient_market_quantity"
 
 
-def test_no_offers_status() -> None:
+def test_percent_is_clamped_to_db_numeric_range() -> None:
+    # PurchaseCalculation.margin_* columns are Numeric(8,2).
+    assert _percent(Decimal("100000000"), Decimal("1")) == Decimal("999999.99")
+    assert _percent(Decimal("-100000000"), Decimal("1")) == Decimal("-999999.99")
+
+
+def test_missing_offers_marked_manual_needed() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:", future=True)
     Base.metadata.create_all(engine)
 
     with Session(engine) as session:
         purchase, item = _seed_purchase(session, external_id="MOS-23")
-
         calculate_purchase(session, purchase.id)
+
         calc = session.scalar(select(ItemCostCalculation).where(ItemCostCalculation.purchase_item_id == item.id))
         assert calc is not None
         assert calc.status in {"no_relevant_offers", "needs_manual_price_search"}
-
         purchase_calc = session.scalar(select(PurchaseCalculation).where(PurchaseCalculation.purchase_id == purchase.id))
         assert purchase_calc is not None
         assert float(purchase_calc.margin_percent) <= 0.0
