@@ -301,6 +301,18 @@ class YandexBrowserAgent:
                         context.close()
                         browser.close()
 
+                rescue_records = _run_non_serp_rescue(
+                    p,
+                    query=query,
+                    query_terms=query_terms,
+                    limit=limit,
+                    warnings=warnings,
+                    settings=self.settings,
+                    proxy_router=self.proxy_router,
+                )
+                if rescue_records:
+                    return rescue_records, warnings
+                warnings.append("non_serp_rescue_exhausted")
                 return [], warnings
         except Exception as exc:  # noqa: BLE001
             warnings.append(f"yandex_search_failed: {exc}")
@@ -321,6 +333,78 @@ def _build_fallback_endpoint_plan(query: str) -> tuple[tuple[str, str], ...]:
         ("ddg_html", f"https://html.duckduckgo.com/html/?q={normalized_query}"),
         ("bing_html", f"https://www.bing.com/search?q={normalized_query}&setlang=ru-ru"),
     )
+
+
+def _build_marketplace_rescue_plan(query: str) -> tuple[tuple[str, str], ...]:
+    normalized_query = quote_plus(str(query or "").strip())
+    return (
+        ("wb_direct", f"https://www.wildberries.ru/catalog/0/search.aspx?search={normalized_query}"),
+        ("ozon_direct", f"https://www.ozon.ru/search/?text={normalized_query}"),
+        ("ym_direct", f"https://market.yandex.ru/search?text={normalized_query}"),
+    )
+
+
+def _run_non_serp_rescue(
+    playwright_ctx: Any,
+    *,
+    query: str,
+    query_terms: set[str],
+    limit: int,
+    warnings: list[str],
+    settings: Any,
+    proxy_router: Any,
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for endpoint_name, url in _build_marketplace_rescue_plan(query):
+        decision = proxy_router.decide(url)
+        launch_kwargs: dict[str, Any] = {"headless": True}
+        if decision.use_proxy and decision.proxy_url:
+            launch_kwargs["proxy"] = {"server": decision.proxy_url}
+
+        browser = playwright_ctx.chromium.launch(**launch_kwargs)
+        context = browser.new_context(user_agent=settings.connector_user_agent)
+        page = context.new_page()
+        try:
+            page.goto(
+                url,
+                wait_until="domcontentloaded",
+                timeout=int(settings.connector_request_timeout_seconds * 1000),
+            )
+            body_text = str(page.inner_text("body") or "")
+            if _is_blocked_response(body_text.lower()):
+                warnings.append(f"captcha_or_blocked:{endpoint_name}")
+                continue
+
+            compact_text = " ".join(body_text.split())[:20000]
+            price = parse_ruble_price_from_snippet(compact_text)
+            if price is None or price <= 0:
+                warnings.append(f"non_serp_rescue_empty:{endpoint_name}")
+                continue
+
+            synthetic_title = f"{endpoint_name} search: {query}".strip()
+            if not _has_relevance_signal(query_terms, synthetic_title, compact_text[:2000]):
+                warnings.append(f"non_serp_rescue_no_relevance:{endpoint_name}")
+                continue
+
+            records.append(
+                {
+                    "title": synthetic_title,
+                    "url": url,
+                    "snippet": compact_text[:500],
+                    "unit_price": price,
+                    "source": endpoint_name,
+                    "offer_url": url,
+                }
+            )
+            warnings.append(f"non_serp_rescue_success:{endpoint_name}")
+            if len(records) >= max(1, int(limit)):
+                break
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"non_serp_rescue_failed:{endpoint_name}:{exc}")
+        finally:
+            context.close()
+            browser.close()
+    return records
 
 
 def _is_blocked_response(page_text: str) -> bool:

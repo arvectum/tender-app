@@ -34,6 +34,11 @@ class YandexFindCheaperProvider(PriceSearchProvider):
             "no_relevant_rows": 0,
             "fallback_success": 0,
             "fallback_empty": 0,
+            "non_serp_rescue_success": 0,
+            "non_serp_rescue_empty": 0,
+            "non_serp_rescue_no_relevance": 0,
+            "non_serp_rescue_failed": 0,
+            "non_serp_rescue_exhausted": 0,
             "invalid_or_junk_url": 0,
             "no_price_signal": 0,
             "strict_reject": "N/A",
@@ -57,6 +62,16 @@ class YandexFindCheaperProvider(PriceSearchProvider):
                     stage_counters["fallback_success"] = int(stage_counters["fallback_success"]) + 1
                 if warning_text.startswith("fallback_empty"):
                     stage_counters["fallback_empty"] = int(stage_counters["fallback_empty"]) + 1
+                if warning_text.startswith("non_serp_rescue_success"):
+                    stage_counters["non_serp_rescue_success"] = int(stage_counters["non_serp_rescue_success"]) + 1
+                if warning_text.startswith("non_serp_rescue_empty"):
+                    stage_counters["non_serp_rescue_empty"] = int(stage_counters["non_serp_rescue_empty"]) + 1
+                if warning_text.startswith("non_serp_rescue_no_relevance"):
+                    stage_counters["non_serp_rescue_no_relevance"] = int(stage_counters["non_serp_rescue_no_relevance"]) + 1
+                if warning_text.startswith("non_serp_rescue_failed"):
+                    stage_counters["non_serp_rescue_failed"] = int(stage_counters["non_serp_rescue_failed"]) + 1
+                if warning_text.startswith("non_serp_rescue_exhausted"):
+                    stage_counters["non_serp_rescue_exhausted"] = int(stage_counters["non_serp_rescue_exhausted"]) + 1
             for row in batch_rows:
                 norm_url = normalize_url(str(row.get("url") or ""))
                 dedup_key = norm_url or f"{row.get('title') or ''}|{row.get('unit_price') or ''}"

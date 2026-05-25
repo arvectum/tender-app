@@ -7,6 +7,7 @@ import types
 from app.price_search.yandex_find_cheaper.browser_agent import (
     YandexBrowserAgent,
     _build_fallback_endpoint_plan,
+    _build_marketplace_rescue_plan,
     _build_yandex_endpoint_plan,
     _extract_price_from_offer_page,
     _is_blocked_response,
@@ -31,6 +32,15 @@ def test_fallback_endpoint_plan_contains_ddg_html_then_bing_html() -> None:
     assert "https://html.duckduckgo.com/html/?q=" in plan[0][1]
     assert plan[1][0] == "bing_html"
     assert "https://www.bing.com/search?q=" in plan[1][1]
+
+
+def test_marketplace_rescue_plan_contains_wb_ozon_ym() -> None:
+    plan = _build_marketplace_rescue_plan("ноутбук lenovo")
+
+    assert [name for name, _ in plan] == ["wb_direct", "ozon_direct", "ym_direct"]
+    assert "wildberries.ru" in plan[0][1]
+    assert "ozon.ru/search" in plan[1][1]
+    assert "market.yandex.ru/search" in plan[2][1]
 
 
 def test_block_detection_hits_known_markers() -> None:
